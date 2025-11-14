@@ -1,0 +1,100 @@
+{
+  "cpf": "12345678901",
+  "nome": "MARIA SILVA SANTOS",
+  "renda": "8500.50",
+  "poder_aquisitivo": {
+    "codigo": "6",
+    "descricao": "ALTO",
+    "renda": "8500.50",
+    "faixa": "De R$ 7018 até R$ 15000"
+  },
+  "score": {
+    "score_csb": "750",
+    "faixa_risco_csb": "BAIXO",
+    "score_csba": "920",
+    "faixa_risco_csba": "BAIXISSIMO RISCO"
+  },
+  "mosaic": {
+    "codigo_novo": "G22",
+    "descricao_novo": "Empresários estabilizados",
+    "classe_novo": "Donos de Negócio",
+    "codigo_principal": "A02",
+    "descricao_principal": "Elite urbana qualificada",
+    "classe_principal": "Elites Brasileiras"
+  },
+  "empresas": [
+    {
+      "cnpj": "12345678000190",
+      "tipo_relacao": "QSA",
+      "relacao": "SOCIO-ADMINISTRADOR",
+      "ativo": true
+    },
+    {
+      "cnpj": "12345678000190",
+      "tipo_relacao": "REPRESENTANTELEGAL",
+      "relacao": "REPRESENTANTE LEGAL",
+      "ativo": true
+    },
+    {
+      "cnpj": "98765432000101",
+      "tipo_relacao": "QSA",
+      "relacao": "SOCIO",
+      "ativo": true
+    }
+  ],
+  "perfil_consumo": {
+    "possui_luxo": true,
+    "possui_investimentos": true,
+    "possui_cartao_black": false,
+    "possui_cartao_prime": true,
+    "possui_conta_alto_padrao": true,
+    "possui_casa_propria": true,
+    "possui_previdencia_privada": true,
+    "credito_pre_aprovado": {
+      "pessoal": true,
+      "imobiliario": true,
+      "veiculo": true
+    },
+    "probabilidades_chave": {
+      "investimentos": "92%",
+      "luxo": "88%",
+      "turismo": "90%",
+      "early_adopters": "92%"
+    }
+  },
+  "compras_recentes": {
+    "total_compras": 4,
+    "valor_total": 14196.00,
+    "ticket_medio": 3549.00,
+    "itens_luxo": [
+      "iPhone 13 Pro - R$ 7599.00",
+      "Notebook Dell Inspiron 15 - R$ 3299.00",
+      "Smart TV Samsung 55\" - R$ 2899.00"
+    ]
+  },
+  "assessment": {
+    "MUITO_ALTO": {
+      "score": 92,
+      "indicadores": [
+        "Renda declarada: R$ 8.500,50",
+        "Classe Mosaic: Elites Brasileiras - Elite urbana qualificada",
+        "Score de crédito: 920 (Baixíssimo Risco)",
+        "Poder aquisitivo: ALTO (Faixa R$ 7.018 - R$ 15.000)",
+        "Sócio-administrador em 1 empresa ativa",
+        "Sócio em 2 empresas ativas",
+        "Possui investimentos (92% probabilidade)",
+        "Possui conta bancária de alto padrão",
+        "Possui cartão prime",
+        "Possui casa própria",
+        "Possui previdência privada",
+        "Crédito pessoal pré-aprovado",
+        "Crédito imobiliário pré-aprovado",
+        "Financiamento de veículo pré-aprovado",
+        "Perfil early adopter (92% probabilidade)",
+        "Compras recentes de alto valor (ticket médio R$ 3.549)",
+        "Histórico de consumo de luxo (88% probabilidade)",
+        "Perfil de turismo/viagens (90% probabilidade)"
+      ]
+    }
+  }
+}

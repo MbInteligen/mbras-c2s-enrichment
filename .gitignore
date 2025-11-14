@@ -22,6 +22,4 @@ Thumbs.db
 
 # Logs
 *.log
-
-# Documentation and test files
-/docs/
+temp_data/
