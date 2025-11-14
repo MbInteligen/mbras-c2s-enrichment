@@ -20,6 +20,8 @@ pub struct AppState {
     pub config: Config,
     /// Global deduplication cache to prevent processing same CPF within short time window
     pub recent_cpf_cache: Cache<String, i64>,
+    /// Lead-level deduplication cache to prevent concurrent processing of same lead_id
+    pub processing_leads_cache: Cache<String, i64>,
 }
 
 /// Health check endpoint
@@ -661,6 +663,53 @@ pub async fn trigger_lead_processing(
         .ok_or_else(|| AppError::BadRequest("Missing 'id' parameter".to_string()))?;
 
     tracing::info!("=== Trigger Lead Processing: {} ===", lead_id);
+
+    // ATOMIC DEDUPLICATION: Check if this lead is already being processed
+    // This prevents concurrent requests from processing the same lead multiple times
+    // NOTE: This uses in-memory cache which works for single instance deployments
+    // For multi-instance production, replace with Redis: SET lead:{id} NX EX 300
+    let now = chrono::Utc::now().timestamp();
+
+    if let Some(processing_since) = state.processing_leads_cache.get(lead_id).await {
+        let seconds_ago = now - processing_since;
+        tracing::warn!(
+            "⏭ DUPLICATE REQUEST BLOCKED - Lead {} already being processed ({} seconds ago)",
+            lead_id,
+            seconds_ago
+        );
+        return Ok(Json(json!({
+            "success": true,
+            "message": format!("Lead already being processed (started {} seconds ago). Duplicate request blocked.", seconds_ago),
+            "lead_id": lead_id,
+            "duplicate_request": true
+        })));
+    }
+
+    // Mark lead as being processed IMMEDIATELY (first request wins in most cases)
+    state
+        .processing_leads_cache
+        .insert(lead_id.to_string(), now)
+        .await;
+    tracing::info!("✓ Lead {} marked as processing at {}", lead_id, now);
+
+    // Small delay to allow cache propagation and catch racing requests
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Double-check: if timestamp changed, another request won the race
+    if let Some(cached_time) = state.processing_leads_cache.get(lead_id).await {
+        if cached_time != now {
+            tracing::warn!(
+                "⏭ RACE CONDITION DETECTED - Another request won for lead {}. Backing off.",
+                lead_id
+            );
+            return Ok(Json(json!({
+                "success": true,
+                "message": "Another concurrent request is processing this lead. Request deduplicated.",
+                "lead_id": lead_id,
+                "duplicate_request": true
+            })));
+        }
+    }
 
     // Initialize C2S service
     let c2s_service = C2SService::new(&state.config);

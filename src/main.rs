@@ -44,11 +44,20 @@ async fn main() -> anyhow::Result<()> {
         .build();
     tracing::info!("CPF deduplication cache initialized");
 
+    // Create lead-level deduplication cache to prevent concurrent duplicate requests
+    // 5 minute TTL is enough to cover typical request processing time
+    let processing_leads_cache = Cache::builder()
+        .time_to_live(Duration::from_secs(300))
+        .max_capacity(10_000)
+        .build();
+    tracing::info!("Lead deduplication cache initialized");
+
     // Build application state
     let app_state = std::sync::Arc::new(crate::handlers::AppState {
         db: db.pool.clone(),
         config: config.clone(),
         recent_cpf_cache,
+        processing_leads_cache,
     });
 
     // Build router
