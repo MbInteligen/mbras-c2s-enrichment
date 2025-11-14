@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    INSERT INTO core.entity_phones (entity_id, phone, phone_type, is_primary, is_whatsapp, carrier, metadata)\n                    VALUES ($1, $2, $3, $4, $5, $6, $7)\n                    ON CONFLICT (phone) DO NOTHING\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Bool",
+        "Bool",
+        "Varchar",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5ca56a5aa417f529bce0fec6772a23c52640669993af135b67ccdc13b42463a5"
+}

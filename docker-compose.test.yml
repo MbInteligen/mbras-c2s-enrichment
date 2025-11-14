@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # Test database - isolated from production
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: rust_c2s_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./schemas/01_init.sql:/docker-entrypoint-initdb.d/01_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d rust_c2s_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Rust application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Database
+      DB_URL: postgresql://test_user:test_password@postgres:5432/rust_c2s_test?sslmode=disable
+
+      # C2S API (use test credentials or mocks)
+      C2S_TOKEN: ${C2S_TOKEN}
+      C2S_BASE_URL: ${C2S_BASE_URL:-https://api.contact2sale.com}
+
+      # Work API
+      WORK_API: ${WORK_API}
+
+      # Diretrix API
+      DIRETRIX_BASE_URL: ${DIRETRIX_BASE_URL:-http://api.diretrixconsultoria.com.br}
+      DIRETRIX_USER: ${DIRETRIX_USER}
+      DIRETRIX_PASS: ${DIRETRIX_PASS}
+
+      # Server
+      PORT: 8081
+
+      # Logging
+      RUST_LOG: info,rust_c2s_api=debug
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Optional: Mock server for testing without hitting real APIs
+  # Uncomment if you want to test with mocked external services
+  # mockserver:
+  #   image: mockserver/mockserver:latest
+  #   ports:
+  #     - "1080:1080"
+  #   environment:
+  #     MOCKSERVER_INITIALIZATION_JSON_PATH: /config/mockserver-init.json
+  #   volumes:
+  #     - ./tests/mockserver-init.json:/config/mockserver-init.json

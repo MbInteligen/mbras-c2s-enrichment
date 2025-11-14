@@ -1,0 +1,51 @@
+# Fly.io Configuration for mbras-c2s
+# https://fly.io/docs/reference/configuration/
+
+app = "mbras-c2s"
+primary_region = "gru"
+
+# Build
+[build]
+  dockerfile = "Dockerfile"
+
+# Environment
+[env]
+  PORT = "8080"
+  RUST_BACKTRACE = "1"
+  RUST_LOG = "info"
+
+# HTTP Service
+[http_service]
+  internal_port = 8080
+  force_https = true
+
+  # Always running (no scale-to-zero)
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+# Health Check
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "10s"
+  grace_period = "40s"
+  method = "GET"
+  path = "/health"
+
+# VM Resources
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Metrics
+[[metrics]]
+  port = 8080
+  path = "/metrics"
