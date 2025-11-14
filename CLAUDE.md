@@ -38,22 +38,34 @@ rust-c2s-api/
 │   ├── batch_enrich.rs      # Batch CPF enrichment (direct Work API)
 │   └── import_json_to_db.rs # Import enriched JSON to PostgreSQL
 │
-├── scripts/                  # Bash scripts
+├── scripts/                  # Bash scripts & utilities
 │   ├── enrich_batch.sh      # Batch enrichment via API endpoint
 │   ├── retry_failed_cpfs.sh # Retry failed enrichments
-│   └── import_enriched_to_db.sh  # Import via psql
+│   ├── import_enriched_to_db.sh  # Import via psql
+│   ├── RUN_SERVER.sh        # Start the server locally
+│   ├── TEST_LIVE.sh         # Test live deployment
+│   ├── test-docker.sh       # Test with Docker
+│   ├── test-local.sh        # Test local environment
+│   ├── test_all_modules.sh  # Test all Work API modules
+│   ├── test_concurrent_requests.sh  # Concurrency testing
+│   ├── test_direct_work_api.sh      # Test Work API directly
+│   ├── test_modules.sh      # Test specific modules
+│   └── test_work_api.sh     # Test Work API integration
 │
 ├── docs/                     # Documentation
-│   ├── api/                 # API documentation
-│   ├── architecture/        # (planned) Architecture docs
-│   ├── deployment/          # (planned) Deployment guides
-│   ├── operations/          # (planned) Operations & maintenance
-│   ├── sql/                 # (planned) SQL reference queries
-│   ├── schemas/             # Database schemas
-│   ├── scripts/             # (legacy) Old test scripts
+│   ├── deployment/          # Deployment guides and checklists
+│   ├── examples/            # Example API responses and data
+│   ├── integrations/        # External API integration docs
+│   ├── performance/         # Performance monitoring and reports
 │   ├── queries/             # SQL query examples
-│   ├── WORK_API_RATE_LIMITING.md  # Rate limiting guidelines
-│   └── PLAN_WEBHOOK_REDIS.md      # Future: Direct C2S webhooks + Redis
+│   ├── schemas/             # Database schema files
+│   ├── security/            # Security checklists and guides
+│   ├── API_ENDPOINTS.md     # API endpoint documentation
+│   ├── DEDUPLICATION_IMPLEMENTATION.md  # Deduplication strategy
+│   ├── IMPLEMENTATION_SUMMARY.md  # Implementation details
+│   ├── PLAN_WEBHOOK_REDIS.md      # Future: Direct C2S webhooks + Redis
+│   ├── TESTING.md           # Testing guide
+│   └── README.md            # Documentation index
 │
 ├── tests/                    # Integration tests (JS)
 ├── temp_data/               # Temporary files (gitignored)
