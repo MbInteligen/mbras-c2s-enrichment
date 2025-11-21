@@ -1,0 +1,463 @@
+{
+  "status": 200,
+  "foto": {
+    "foto": null,
+    "assinatura": null,
+    "caracteristicas": []
+  },
+  "DadosBasicos": {
+    "nome": "MARIA SILVA SANTOS",
+    "cpf": "12345678901",
+    "cns": "700001234567890",
+    "dataNascimento": "15/05/1985",
+    "sexo": "F - FEMININO",
+    "cor": "BRANCA",
+    "nomeMae": "JOANA SILVA SANTOS",
+    "nomePai": "JOSE SANTOS",
+    "municipioNascimento": "SAO PAULO",
+    "escolaridade": "ENSINO SUPERIOR COMPLETO",
+    "estadoCivil": "CASADO(A)",
+    "nacionalidade": "BRASILEIRA",
+    "conjuge": [],
+    "obito": {
+      "obito": "NÃO",
+      "dataObito": "Não consta."
+    },
+    "situacaoCadastral": {
+      "codigoSituacaoCadastral": "2",
+      "descricaoSituacaoCadastral": "REGULAR",
+      "dataSituacaoCadastral": "2023-01-15 00:00:00"
+    }
+  },
+  "DadosEconomicos": {
+    "renda": "8500,50",
+    "poderAquisitivo": {
+      "codigoPoderAquisitivo": "6",
+      "poderAquisitivoDescricao": "ALTO",
+      "rendaPoderAquisitivo": "8500,50",
+      "codigoFaixaRenda": "10",
+      "faixaPoderAquisitivo": "De R$ 7018 até R$ 15000"
+    },
+    "score": {
+      "scoreCSB": "750",
+      "scoreCSBFaixaRisco": "BAIXO",
+      "scoreCSBA": "920",
+      "scoreCSBAFaixaRisco": "BAIXISSIMO RISCO"
+    },
+    "serasaMosaic": {
+      "codigoMosaic": "A02",
+      "descricaoMosaic": "Elite urbana qualificada",
+      "classeMosaic": "Elites Brasileiras",
+      "codigoMosaicNovo": "G22",
+      "descricaoMosaicNovo": "Empresários estabilizados",
+      "classeMosaicNovo": "Donos de Negócio",
+      "codigoMosaicSecundario": "A01",
+      "descricaoMosaicSecundario": "Ricos e influentes",
+      "classeMosaicSecundario": "Elites Brasileiras",
+      "observação": "Para mais assertividade, levar em consideração o mosaic novo."
+    }
+  },
+  "profissao": {
+    "cbo": "252505",
+    "cboDescricao": "Analista de sistemas",
+    "pis": 12345678901
+  },
+  "empregos": [],
+  "empresas": [
+    {
+      "cnpj": "12345678000190",
+      "tipoRelacao": "QSA",
+      "relacao": "SOCIO-ADMINISTRADOR",
+      "admissao": "01/03/2015",
+      "demissao": "31/12/9999"
+    },
+    {
+      "cnpj": "12345678000190",
+      "tipoRelacao": "REPRESENTANTELEGAL",
+      "relacao": "",
+      "admissao": "01/03/2015",
+      "demissao": "31/12/9999"
+    },
+    {
+      "cnpj": "98765432000101",
+      "tipoRelacao": "QSA",
+      "relacao": "SOCIO",
+      "admissao": "10/06/2018",
+      "demissao": "31/12/9999"
+    }
+  ],
+  "registroGeral": {
+    "numero": "MG-12.345.678",
+    "orgaoEmissor": "SSP-MG",
+    "dataEmissao": "2003-05-15"
+  },
+  "tituloEleitor": {
+    "tituloEleitorNumero": 123456789012,
+    "zonaTitulo": 123,
+    "secaoTitulo": 456
+  },
+  "enderecos": [
+    {
+      "tipoLogradouro": "R",
+      "logradouro": "AUGUSTA",
+      "logradouroNumero": "1500",
+      "complemento": "APTO 501",
+      "bairro": "CONSOLACAO",
+      "cidade": "SAO PAULO",
+      "uf": "SP",
+      "cep": "01304001"
+    },
+    {
+      "tipoLogradouro": "AV",
+      "logradouro": "PAULISTA",
+      "logradouroNumero": "1000",
+      "complemento": "SALA 102",
+      "bairro": "BELA VISTA",
+      "cidade": "SAO PAULO",
+      "uf": "SP",
+      "cep": "01310100"
+    },
+    {
+      "tipoLogradouro": "R",
+      "logradouro": "OSCAR FREIRE",
+      "logradouroNumero": "850",
+      "complemento": "",
+      "bairro": "JARDINS",
+      "cidade": "SAO PAULO",
+      "uf": "SP",
+      "cep": "01426001"
+    }
+  ],
+  "telefones": [
+    {
+      "telefone": "1138001234",
+      "status": "ATIVO",
+      "tipo": "TELEFONE RESIDENCIAL",
+      "operadora": "VIVO",
+      "whatsapp": null
+    },
+    {
+      "telefone": "11987654321",
+      "status": "ATIVO",
+      "tipo": "TELEFONE MÓVEL",
+      "operadora": "VIVO",
+      "whatsapp": "SIM"
+    },
+    {
+      "telefone": "11912345678",
+      "status": "ATIVO",
+      "tipo": "CELULAR",
+      "operadora": "TIM",
+      "whatsapp": "SIM"
+    },
+    {
+      "telefone": "1130001234",
+      "status": "ATIVO",
+      "tipo": "COMERCIAL",
+      "operadora": "CLARO",
+      "whatsapp": null
+    },
+    {
+      "telefone": "11999887766",
+      "status": "NO",
+      "tipo": "CELULAR",
+      "operadora": "OI",
+      "whatsapp": null
+    }
+  ],
+  "emails": [
+    {
+      "email": "maria.santos@empresa.com.br",
+      "prioridade": "MUITO ALTA",
+      "qualidade": "OTIMO",
+      "emailPessoal": "NAO",
+      "blacklist": "NÃO"
+    },
+    {
+      "email": "maria.silva@gmail.com",
+      "prioridade": "ALTA",
+      "qualidade": "OTIMO",
+      "emailPessoal": "SIM",
+      "blacklist": "NÃO"
+    },
+    {
+      "email": "mariasilva@hotmail.com",
+      "prioridade": "MEDIA",
+      "qualidade": "BOM",
+      "emailPessoal": "SIM",
+      "blacklist": "NÃO"
+    },
+    {
+      "email": "msilva@yahoo.com.br",
+      "prioridade": "BAIXA",
+      "qualidade": "BOM",
+      "emailPessoal": "SIM",
+      "blacklist": "NÃO"
+    },
+    {
+      "email": "contato@negocio.com",
+      "prioridade": "MUITO BAIXA",
+      "qualidade": "POTENCIALMENTE BOM",
+      "emailPessoal": "NAO",
+      "blacklist": "NÃO"
+    }
+  ],
+  "parentes": [
+    {
+      "nomeParente": "JOANA SILVA SANTOS",
+      "cpfParente": "98765432109",
+      "grauParentesco": "MAE"
+    },
+    {
+      "nomeParente": "JOSE SANTOS",
+      "cpfParente": "11122233344",
+      "grauParentesco": "PAI"
+    }
+  ],
+  "DadosImposto": [
+    {
+      "cpf": "12345678901",
+      "banco": "001",
+      "agencia": "1234",
+      "lote": "567890",
+      "ano": "2023",
+      "dataLote": "2023-05-15",
+      "status": "IMPOSTO A RESTITUIR"
+    },
+    {
+      "cpf": "12345678901",
+      "banco": "",
+      "agencia": "",
+      "lote": "",
+      "ano": "2022",
+      "dataLote": "",
+      "status": "IMPOSTO A PAGAR"
+    },
+    {
+      "cpf": "12345678901",
+      "banco": "001",
+      "agencia": "1234",
+      "lote": "123456",
+      "ano": "2021",
+      "dataLote": "2021-06-30",
+      "status": "RESTITUICAO PAGA"
+    }
+  ],
+  "beneficios": [
+    {
+      "tipo": "auxilioEmergencial",
+      "beneficio": "AUXILIO EMERGENCIAL",
+      "totalParcelasRecebidas": 0,
+      "totalRecebido": "R$ 0",
+      "parcelasRecebidas": []
+    },
+    {
+      "tipo": "bolsaFamilia",
+      "beneficio": "BOLSA FAMILIA",
+      "totalParcelasRecebidas": 0,
+      "totalRecebido": "R$ 0",
+      "parcelasRecebidas": []
+    },
+    {
+      "tipo": "bpc",
+      "beneficio": "BENEFICIO PRESTACAO CONTINUADA",
+      "totalParcelasRecebidas": 0,
+      "totalRecebido": "R$ 0",
+      "parcelasRecebidas": []
+    },
+    {
+      "tipo": "inss",
+      "beneficio": "INSTITUTO NACIONAL DO SEGURO SOCIAL",
+      "totalParcelasRecebidas": 0,
+      "totalRecebido": "R$ 0",
+      "parcelasRecebidas": []
+    }
+  ],
+  "listaDocumentos": {
+    "CNS": {
+      "numeroCNS": "700001234567890",
+      "dataAtribuicao": "2015-03-10T10:00:00-03:00",
+      "tipoCartao": "D",
+      "manual": "false",
+      "justificativaManual": {}
+    },
+    "outros": null
+  },
+  "imunoBiologicos": [
+    {
+      "VacinaNumDose": "3",
+      "PacienteEnderecoCep": "01304",
+      "PacienteRacaCorValor": "BRANCA",
+      "VacinaFabricanteReferencia": "Organization/28290",
+      "DataImportacaoRnds": "2022-01-20T10:00:00.000Z",
+      "PacienteNacionalidadeEnumNacionalidade": "B",
+      "PacienteCpf": "12345678901",
+      "Timestamp": "2022-01-20T10:00:00.000Z",
+      "VacinaProfissionalAplicador": "Practitioner/123456789",
+      "PacienteEmail": null,
+      "PacienteRacaCorCodigo": "01",
+      "DtDeleted": null,
+      "PacienteEnderecoCoPais": "10",
+      "VacinaNome": "COVID-19 PFIZER - COMIRNATY",
+      "EstalecimentoNoFantasia": "UBS CENTRAL",
+      "EstabelecimentoRazaoSocial": "MUNICIPIO DE SAO PAULO",
+      "PacienteNomeMae": "JOANA SILVA SANTOS",
+      "PacienteEnumSexoBiologico": "F",
+      "Status": "final",
+      "VacinaDataAplicacao": "2022-01-15T00:00:00.000Z",
+      "VacinaGrupoAtendimentoNome": "Pessoas de 18 a 64 anos",
+      "SistemaOrigem": "Novo PNI",
+      "EstabelecimentoMunicipioNome": "SAO PAULO",
+      "VacinaCategoriaNome": "Faixa Etária",
+      "EstabelecimentoValor": "2000001",
+      "PacienteEnderecoNmPais": "BRASIL",
+      "VacinaCodigo": "87",
+      "VacinaFabricanteNome": "PFIZER",
+      "PacienteCns": "700001234567890",
+      "VacinaProfissionalAplicadorNome": "MARIA ENFERMEIRA SILVA",
+      "EstabelecimentoUf": "SP",
+      "PacienteEnderecoNmMunicipio": "SAO PAULO",
+      "EstabelecimentoMunicipioCodigo": "355030",
+      "VacinaCategoriaCodigo": "2",
+      "PacienteEnderecoBairro": "CONSOLACAO",
+      "PacienteNome": "MARIA SILVA SANTOS",
+      "PacienteEnderecoUf": "SP",
+      "PacienteEnderecoCoIbgeMunicipio": "355030",
+      "VacinaGrupoAtendimentoCodigo": "201",
+      "PacienteDataNascimento": "1985-05-15",
+      "VacinaDescricaoDose": "Dose de Reforço",
+      "VacinaLote": "FL1234"
+    }
+  ],
+  "pep": [],
+  "vizinhos": [
+    {
+      "nome": "JOAO PEDRO OLIVEIRA",
+      "cpf": "22233344455",
+      "dataNascimento": "12/08/1990",
+      "idade": 34,
+      "sexo": "M - MASCULINO",
+      "nomeMae": "ANA OLIVEIRA COSTA"
+    },
+    {
+      "nome": "FERNANDA COSTA LIMA",
+      "cpf": "33344455566",
+      "dataNascimento": "25/03/1988",
+      "idade": 36,
+      "sexo": "F - FEMININO",
+      "nomeMae": "LUCIA COSTA SANTOS"
+    },
+    {
+      "nome": "CARLOS EDUARDO SOUZA",
+      "cpf": "44455566677",
+      "dataNascimento": "03/11/1992",
+      "idade": 32,
+      "sexo": "M - MASCULINO",
+      "nomeMae": "PATRICIA SOUZA SILVA"
+    }
+  ],
+  "internet": {
+    "www.amazon.com.br": {
+      "id": 1234567,
+      "telefone": "11987654321",
+      "email": "maria.silva@gmail.com"
+    },
+    "www.mercadolivre.com.br": {
+      "id": 7654321,
+      "telefone": "11987654321",
+      "email": "maria.silva@gmail.com"
+    }
+  },
+  "comprasId": [
+    {
+      "produto": "Notebook Dell Inspiron 15",
+      "detalhe": "8GB RAM, 256GB SSD",
+      "quantidade": "1",
+      "preco": "3299.00"
+    },
+    {
+      "produto": "iPhone 13 Pro",
+      "detalhe": "128GB, Azul Sierra",
+      "quantidade": "1",
+      "preco": "7599.00"
+    },
+    {
+      "produto": "Smart TV Samsung 55\"",
+      "detalhe": "4K UHD",
+      "quantidade": "1",
+      "preco": "2899.00"
+    },
+    {
+      "produto": "Cafeteira Nespresso",
+      "detalhe": "Modelo Essenza Mini",
+      "quantidade": "1",
+      "preco": "399.00"
+    }
+  ],
+  "perfilConsumo": {
+    "credito_pessoal_pre_aprovado": true,
+    "credito_imobiliario_pre_aprovado": true,
+    "financiamento_de_veiculo_pre_aprovado": true,
+    "classe_media": false,
+    "debito_autmatico": true,
+    "possui_luxo": true,
+    "possui_investimentos": true,
+    "possui_cartao_de_credito": true,
+    "possui_multiplos_cartoes": true,
+    "possui_conta_alto_padrao": true,
+    "possui_cartao_black": false,
+    "possui_cartao_prime": true,
+    "possui_celular_pre_pago": false,
+    "possui_celular_pos_pago": true,
+    "possui_milhas_acumuladas": true,
+    "possui_casa_propria": true,
+    "possui_descontos": true,
+    "possui_contas_correntes": true,
+    "possui_seguro_automotivo": true,
+    "possui_previdencia_privada": true,
+    "possui_internet_banking": true,
+    "possui_token_instalado": true,
+    "realizou_viagens": true,
+    "credito_pessoal": "92% de probabilidade positiva.",
+    "financiamento_veiculo": "95% de probabilidade positiva.",
+    "compra_internet": "88% de probabilidade positiva.",
+    "multiplos_cartoes": "85% de probabilidade positiva.",
+    "cartao_prime": "90% de probabilidade positiva.",
+    "tv_cabo": "75% de probabilidade positiva.",
+    "banda_larga": "95% de probabilidade positiva.",
+    "casa_propria": "92% de probabilidade positiva.",
+    "celular_pre_pago": "15% de probabilidade positiva.",
+    "celular_pos_pago": "95% de probabilidade positiva.",
+    "credito_mobiliario": "88% de probabilidade positiva.",
+    "seguro_automotivo": "90% de probabilidade positiva.",
+    "seguro_saude": "85% de probabilidade positiva.",
+    "seguro_vida": "80% de probabilidade positiva.",
+    "seguro_residencial": "78% de probabilidade positiva.",
+    "investimentos": "92% de probabilidade positiva.",
+    "consignado": "45% de probabilidade positiva.",
+    "previdencia_privada": "88% de probabilidade positiva.",
+    "resgate_milhas": "95% de probabilidade positiva.",
+    "cacador_descontos": "60% de probabilidade positiva.",
+    "fitness": "85% de probabilidade positiva.",
+    "turismo": "90% de probabilidade positiva.",
+    "luxo": "88% de probabilidade positiva.",
+    "cinefilo": "75% de probabilidade positiva.",
+    "transporte_publico": "25% de probabilidade positiva.",
+    "jogos_online": "40% de probabilidade positiva.",
+    "video_game": "35% de probabilidade positiva.",
+    "early_adopters": "92% de probabilidade positiva."
+  },
+  "servidor_siape": {
+    "ID_Servidor": "",
+    "Registros_Servidor": [],
+    "Remuneracoes_Servidor": [],
+    "Afastamentos_Servidor": [],
+    "Observacoes_Servidor": []
+  },
+  "flags": {
+    "__pessoa_exposta_politicamente__": false,
+    "__beneficiario_auxilios__": false,
+    "__servidor_publico_siape__": false
+  },
+  "debug_info": []
+}

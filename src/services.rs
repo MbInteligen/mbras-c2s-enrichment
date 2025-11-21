@@ -4,7 +4,7 @@ use crate::models::*;
 use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use sqlx::PgPool;
 
 pub struct WorkApiService {
@@ -664,6 +664,83 @@ impl C2SService {
 
         tracing::info!("Successfully sent message to C2S for lead: {}", lead_id);
         Ok(())
+    }
+
+    /// Create a new lead in C2S
+    pub async fn create_lead(
+        &self,
+        customer_name: &str,
+        phone: Option<&str>,
+        email: Option<&str>,
+        description: &str,
+        source: Option<&str>,
+        seller_id: Option<&str>,
+    ) -> Result<String, AppError> {
+        let url = format!("{}/integration/leads", self.base_url);
+
+        // Build attributes using JSON:API format
+        let mut attributes = serde_json::Map::new();
+        attributes.insert("name".to_string(), json!(customer_name));
+        attributes.insert("description".to_string(), json!(description));
+
+        if let Some(phone_val) = phone {
+            attributes.insert("phone".to_string(), json!(phone_val));
+        }
+        if let Some(email_val) = email {
+            attributes.insert("email".to_string(), json!(email_val));
+        }
+        if let Some(source_val) = source {
+            attributes.insert("source".to_string(), json!(source_val));
+        }
+        if let Some(seller_val) = seller_id {
+            attributes.insert("seller_id".to_string(), json!(seller_val));
+        }
+
+        let payload = json!({
+            "data": {
+                "type": "lead",
+                "attributes": attributes
+            }
+        });
+
+        tracing::info!("Creating new lead in C2S: {}", customer_name);
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| AppError::ExternalApiError(format!("C2S create lead failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AppError::ExternalApiError(format!(
+                "C2S API create lead failed {}: {}",
+                status, error_text
+            )));
+        }
+
+        let response_data: serde_json::Value = response.json().await.map_err(|e| {
+            AppError::ExternalApiError(format!("Failed to parse C2S create lead response: {}", e))
+        })?;
+
+        // C2S returns {"success": true, "lead_id": "...", ...}
+        let lead_id = response_data["lead_id"]
+            .as_str()
+            .ok_or_else(|| {
+                AppError::ExternalApiError("C2S response missing 'lead_id' field".to_string())
+            })?
+            .to_string();
+
+        tracing::info!("✅ Created lead in C2S: {}", lead_id);
+        Ok(lead_id)
     }
 }
 
