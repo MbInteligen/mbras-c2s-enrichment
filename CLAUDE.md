@@ -18,6 +18,12 @@
 - HTTP Client: Reqwest
 - Deployment: Fly.io (256MB instance, São Paulo region)
 
+**Related Project**: 
+- **C2S Gateway** (Python/FastAPI) - Located at `/Users/ronaldo/Documents/projects/clients/ibvi/services/ads/platform/c2s-gateway/`
+  - Complete C2S API wrapper with 28+ endpoints
+  - Campaign enrichment system
+  - Can be integrated with this Rust API (see `docs/architecture/C2S_GATEWAY_INTEGRATION.md`)
+
 ---
 
 ## Project Structure
@@ -675,6 +681,89 @@ ORDER BY ea.confidence_score DESC
 - **Testing:** ✅ Logic validated
 - **Documentation:** ✅ Complete
 - **Production:** ⏳ Ready for deployment
+
+---
+
+## C2S Gateway Integration (Optional)
+
+### Overview
+
+There is a separate **C2S Gateway** project (Python/FastAPI) that provides a complete wrapper around the Contact2Sale API with 28+ endpoints, campaign enrichment, and better error handling.
+
+**Location**: `/Users/ronaldo/Documents/projects/clients/ibvi/services/ads/platform/c2s-gateway/`
+
+**Tech Stack**:
+- Python 3.11+
+- FastAPI
+- Pydantic validation
+- 28+ C2S API endpoints
+- Campaign enrichment system
+
+### Integration Benefits
+
+Instead of calling C2S API directly, this Rust API could use the C2S Gateway:
+
+1. **Single source of truth** for all C2S operations
+2. **Centralized authentication** and token management
+3. **Type safety** through Pydantic models
+4. **Campaign enrichment** (automatic Google Ads campaign → property mapping)
+5. **Better error handling** and logging
+6. **Future-proof** - C2S API changes require updating only the gateway
+
+### Proposed Architecture
+
+```
+Make.com Webhook
+    ↓
+Rust C2S API (mbras-c2s.fly.dev)
+    ├→ Work API (enrichment data)
+    ├→ Diretrix API (CPF lookup)
+    └→ C2S Gateway (Python FastAPI)
+         └→ Contact2Sale API
+```
+
+### Current Architecture
+
+```
+Make.com Webhook
+    ↓
+Rust C2S API (mbras-c2s.fly.dev)
+    ├→ Work API (enrichment data)
+    ├→ Diretrix API (CPF lookup)
+    └→ Contact2Sale API (direct)
+```
+
+### Integration Status
+
+- **Status**: 📋 Planned (not implemented)
+- **Complexity**: Medium
+- **Estimated Effort**: 4-6 hours
+- **Documentation**: See `docs/architecture/C2S_GATEWAY_INTEGRATION.md`
+
+### Quick Start (If Integrating)
+
+1. **Deploy C2S Gateway** to Fly.io:
+   ```bash
+   cd /Users/ronaldo/Documents/projects/clients/ibvi/services/ads/platform/c2s-gateway
+   fly deploy
+   ```
+
+2. **Add Gateway Client** to `src/services.rs`:
+   ```rust
+   pub struct C2sGatewayClient {
+       client: reqwest::Client,
+       base_url: String,
+   }
+   ```
+
+3. **Update Configuration** with gateway URL:
+   ```env
+   C2S_GATEWAY_URL=https://c2s-gateway-mbras.fly.dev
+   ```
+
+4. **Update Handlers** to use gateway instead of direct C2S calls
+
+**Note**: This is optional. The current direct C2S integration works fine. The gateway provides additional features and better architecture if needed in the future.
 
 ---
 
