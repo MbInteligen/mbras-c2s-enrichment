@@ -24,6 +24,17 @@ impl EnrichmentStorage {
         cpf: &str,
         work_data: &WorkApiCompleteResponse,
     ) -> Result<Uuid, AppError> {
+        self.store_enriched_person_with_lead(cpf, work_data, None)
+            .await
+    }
+
+    /// Store enriched person data with optional lead_id for C2S tracking
+    pub async fn store_enriched_person_with_lead(
+        &self,
+        cpf: &str,
+        work_data: &WorkApiCompleteResponse,
+        lead_id: Option<&str>,
+    ) -> Result<Uuid, AppError> {
         // Extract and prepare data
         let dados_basicos = work_data.get("DadosBasicos");
         let dados_econ = work_data.get("DadosEconomicos");
@@ -142,6 +153,14 @@ impl EnrichmentStorage {
         // Create canonical name (uppercase, normalized)
         let canonical_name = nome.to_uppercase();
 
+        // Build entity metadata with lead_id if provided
+        let mut entity_metadata = json!({});
+        if let Some(lid) = lead_id {
+            entity_metadata["c2s_lead_id"] = json!(lid);
+            entity_metadata["c2s_source"] = json!("api_enrichment");
+            entity_metadata["enriched_at"] = json!(chrono::Utc::now().to_rfc3339());
+        }
+
         // Step 1: Try to find existing entity first, then insert if not found
         let entity_id = match sqlx::query_as::<_, (Uuid,)>(
             "SELECT entity_id FROM core.entities WHERE national_id = $1 LIMIT 1",
@@ -152,7 +171,7 @@ impl EnrichmentStorage {
         .map_err(AppError::DatabaseError)?
         {
             Some(existing) => {
-                // Update existing entity
+                // Update existing entity with metadata merge
                 sqlx::query(
                     r#"
                     UPDATE core.entities
@@ -160,13 +179,15 @@ impl EnrichmentStorage {
                         enriched_at = now(),
                         updated_at = now(),
                         name = COALESCE(name, $2),
-                        canonical_name = COALESCE(canonical_name, $3)
+                        canonical_name = COALESCE(canonical_name, $3),
+                        metadata = COALESCE(metadata, '{}'::jsonb) || $4
                     WHERE national_id = $1
                     "#,
                 )
                 .bind(cpf)
                 .bind(nome)
                 .bind(&canonical_name)
+                .bind(&entity_metadata)
                 .execute(&self.pool)
                 .await
                 .map_err(AppError::DatabaseError)?;
@@ -174,17 +195,18 @@ impl EnrichmentStorage {
                 existing.0
             }
             None => {
-                // Insert new entity
+                // Insert new entity with metadata
                 let new_entity: (Uuid,) = sqlx::query_as(
                     r#"
-                    INSERT INTO core.entities (national_id, name, canonical_name, entity_type, is_enriched, enriched_at, data_source)
-                    VALUES ($1, $2, $3, 'person'::core.entity_type_enum, true, now(), 'api'::core.data_source_enum)
+                    INSERT INTO core.entities (national_id, name, canonical_name, entity_type, is_enriched, enriched_at, data_source, metadata)
+                    VALUES ($1, $2, $3, 'person'::core.entity_type_enum, true, now(), 'api'::core.data_source_enum, $4)
                     RETURNING entity_id
                     "#,
                 )
                 .bind(cpf)
                 .bind(nome)
                 .bind(&canonical_name)
+                .bind(&entity_metadata)
                 .fetch_one(&self.pool)
                 .await
                 .map_err(AppError::DatabaseError)?;
@@ -404,6 +426,9 @@ impl EnrichmentStorage {
     }
 
     /// Store addresses for an entity
+    /// Note: Work API returns addresses associated with the queried CPF
+    /// They might be from the person, spouse, or family members
+    /// We store them with metadata to track confidence level
     async fn store_addresses(
         &self,
         entity_id: Uuid,
@@ -421,14 +446,70 @@ impl EnrichmentStorage {
             let state = endereco_obj.get("uf").and_then(|u| u.as_str());
             let zip_code = endereco_obj.get("cep").and_then(|z| z.as_str());
 
+            // Check if there's a name associated with this address (some API responses include it)
+            let address_owner_name = endereco_obj.get("nome").and_then(|n| n.as_str());
+            let relationship = endereco_obj.get("relacao").and_then(|r| r.as_str());
+
             if street.is_some() || zip_code.is_some() {
                 let is_primary = idx == 0;
 
-                // Step 1: Insert address
-                let address_row: Result<(i32,), _> = sqlx::query_as(
+                // Determine confidence level and address type
+                // High confidence: First address from Work API for the queried CPF
+                // Medium confidence: Additional addresses without relationship info
+                // Low confidence: Addresses with explicit family relationship
+                let (confidence_score, address_type_str, verified) = match (idx, relationship) {
+                    (0, None) => (0.90, "residential", true), // First address, likely current
+                    (_, Some(rel)) if rel.contains("CÔNJUGE") || rel.contains("CONJUGE") => {
+                        (0.50, "family_member", false) // Spouse address
+                    }
+                    (_, Some(rel))
+                        if rel.contains("PAI") || rel.contains("MÃE") || rel.contains("MAE") =>
+                    {
+                        (0.40, "family_member", false) // Parent address
+                    }
+                    (_, Some(_)) => (0.45, "family_member", false), // Other family
+                    _ => (0.75, "residential", false),              // Additional addresses
+                };
+
+                // Build metadata for tracking
+                let mut address_meta = json!({
+                    "source": "work_api",
+                    "confidence_score": confidence_score,
+                    "position_in_response": idx,
+                    "verified": verified
+                });
+
+                if let Some(owner) = address_owner_name {
+                    address_meta["owner_name"] = json!(owner);
+                }
+
+                if let Some(rel) = relationship {
+                    address_meta["relationship"] = json!(rel);
+                }
+
+                // Build formatted address for display
+                let formatted_address = format!(
+                    "{} {}, {} - {}, {} - {}",
+                    street.unwrap_or(""),
+                    number.unwrap_or("S/N"),
+                    neighborhood.unwrap_or(""),
+                    city.unwrap_or(""),
+                    state.unwrap_or(""),
+                    zip_code.unwrap_or("")
+                )
+                .trim()
+                .to_string();
+
+                // Step 1: Insert or get existing address (using UUID now)
+                let address_row: Result<(Uuid,), _> = sqlx::query_as(
                     r#"
-                    INSERT INTO app.addresses (street_type, street, number, complement, neighborhood, city, state, zip_code)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    INSERT INTO core.addresses (
+                        street_type, street, number, complement, neighborhood,
+                        city, state, zip_code, formatted_address, is_valid,
+                        primary_address, created_at, updated_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, now(), now())
+                    ON CONFLICT ON CONSTRAINT addresses_pkey DO NOTHING
                     RETURNING id
                     "#,
                 )
@@ -440,23 +521,81 @@ impl EnrichmentStorage {
                 .bind(city)
                 .bind(state)
                 .bind(zip_code)
+                .bind(&formatted_address)
+                .bind(is_primary)
                 .fetch_one(&self.pool)
                 .await;
 
-                // Step 2: Link address to entity (ignore errors if already linked)
-                if let Ok(addr) = address_row {
-                    // Try to link, ignore if already linked
-                    let _ = sqlx::query(
+                // If insert failed due to conflict, try to find existing address
+                let address_id = match address_row {
+                    Ok(addr) => Some(addr.0),
+                    Err(_) => {
+                        // Try to find by matching fields
+                        sqlx::query_as::<_, (Uuid,)>(
+                            r#"
+                            SELECT id FROM core.addresses
+                            WHERE COALESCE(street, '') = COALESCE($1, '')
+                            AND COALESCE(number, '') = COALESCE($2, '')
+                            AND COALESCE(zip_code, '') = COALESCE($3, '')
+                            LIMIT 1
+                            "#,
+                        )
+                        .bind(street)
+                        .bind(number)
+                        .bind(zip_code)
+                        .fetch_optional(&self.pool)
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|r| r.0)
+                    }
+                };
+
+                // Step 2: Link address to entity with confidence metadata
+                if let Some(addr_id) = address_id {
+                    let link_result = sqlx::query(
                         r#"
-                        INSERT INTO core.entity_addresses (entity_id, address_id, address_type, is_primary, is_current, data_source)
-                        VALUES ($1, $2, 'residential', $3, true, 'api'::core.data_source_enum)
+                        INSERT INTO core.entity_addresses (
+                            entity_id, address_id, address_type, is_primary,
+                            is_current, data_source, confidence_score, verified,
+                            metadata, created_at, updated_at
+                        )
+                        VALUES ($1, $2, $3, $4, true, 'api', $5, $6, $7, now(), now())
+                        ON CONFLICT ON CONSTRAINT entity_addresses_pkey DO UPDATE
+                        SET is_primary = EXCLUDED.is_primary,
+                            confidence_score = EXCLUDED.confidence_score,
+                            verified = EXCLUDED.verified,
+                            metadata = EXCLUDED.metadata,
+                            updated_at = now()
                         "#,
                     )
                     .bind(entity_id)
-                    .bind(addr.0)
+                    .bind(addr_id)
+                    .bind(address_type_str)
                     .bind(is_primary)
+                    .bind(BigDecimal::from_str(&confidence_score.to_string()).ok())
+                    .bind(verified)
+                    .bind(&address_meta)
                     .execute(&self.pool)
                     .await;
+
+                    if let Err(e) = link_result {
+                        tracing::warn!(
+                            "Failed to link address {} to entity {}: {}",
+                            addr_id,
+                            entity_id,
+                            e
+                        );
+                    } else {
+                        tracing::info!(
+                            "✓ Linked address {} to entity {} (type: {}, primary: {}, confidence: {:.0}%)",
+                            addr_id,
+                            entity_id,
+                            address_type_str,
+                            is_primary,
+                            confidence_score * 100.0
+                        );
+                    }
                 }
             }
         }

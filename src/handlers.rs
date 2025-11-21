@@ -437,11 +437,16 @@ pub async fn c2s_enrich_lead(
     let mut stored_entity_ids = Vec::new();
     for (idx, cpf) in cpf_list.iter().enumerate() {
         match storage
-            .store_enriched_person(cpf, &enriched_data[idx])
+            .store_enriched_person_with_lead(cpf, &enriched_data[idx], Some(&lead_id))
             .await
         {
             Ok(entity_id) => {
-                tracing::info!("✓ Stored CPF {} → entity_id: {}", cpf, entity_id);
+                tracing::info!(
+                    "✓ Stored CPF {} → entity_id: {} (lead_id: {})",
+                    cpf,
+                    entity_id,
+                    lead_id
+                );
                 stored_entity_ids.push(entity_id);
             }
             Err(e) => {
@@ -895,11 +900,16 @@ pub async fn trigger_lead_processing(
 
     for (idx, cpf) in cpfs_to_process.iter().enumerate() {
         match storage
-            .store_enriched_person(cpf, &enriched_data[idx])
+            .store_enriched_person_with_lead(cpf, &enriched_data[idx], Some(lead_id))
             .await
         {
             Ok(entity_id) => {
-                tracing::info!("✓ Stored CPF {} → entity_id: {}", cpf, entity_id);
+                tracing::info!(
+                    "✓ Stored CPF {} → entity_id: {} (lead_id: {})",
+                    cpf,
+                    entity_id,
+                    lead_id
+                );
                 stored_entity_ids.push(entity_id);
             }
             Err(e) => {

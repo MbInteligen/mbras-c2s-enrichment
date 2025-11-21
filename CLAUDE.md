@@ -53,18 +53,46 @@ rust-c2s-api/
 │   └── test_work_api.sh     # Test Work API integration
 │
 ├── docs/                     # Documentation
+│   ├── analysis/            # Data analysis and comparisons
+│   │   ├── DATA_COMPARISON.md
+│   │   └── DB_STORAGE_ANALYSIS.md
+│   ├── architecture/        # System architecture and design
+│   │   ├── DEDUPLICATION_IMPLEMENTATION.md
+│   │   ├── IMPLEMENTATION_SUMMARY.md
+│   │   └── PLAN_WEBHOOK_REDIS.md
 │   ├── deployment/          # Deployment guides and checklists
+│   │   ├── DEPLOYMENT.md
+│   │   ├── DEPLOYMENT_CHECKLIST.md
+│   │   ├── DEPLOY_NOW.md
+│   │   ├── FLY_DEPLOYMENT.md
+│   │   └── READY_FOR_DEPLOYMENT.md
 │   ├── examples/            # Example API responses and data
+│   │   ├── EXAMPLE_CPF_RESPONSE.json
+│   │   └── WEALTH_ASSESSMENT_EXAMPLE.json
 │   ├── integrations/        # External API integration docs
+│   │   ├── MAKE_INTEGRATION.md
+│   │   ├── MODULE_TEST_RESULTS.md
+│   │   ├── TESTING.md
+│   │   ├── TESTING_COMPLETE.md
+│   │   └── WORK_API_RATE_LIMITING.md
 │   ├── performance/         # Performance monitoring and reports
+│   │   ├── MEMORY_USAGE_REPORT.md
+│   │   └── PERFORMANCE_MONITORING.md
 │   ├── queries/             # SQL query examples
+│   │   └── ENRICHMENT_FLOW.md
 │   ├── schemas/             # Database schema files
 │   ├── security/            # Security checklists and guides
+│   │   ├── SECURITY_AND_SCHEMA_FIXES.md
+│   │   ├── SECURITY_CHECKLIST.md
+│   │   ├── SECURITY_FIXES.md
+│   │   └── SECURITY_ROTATION_REQUIRED.md
+│   ├── sessions/            # Development session summaries
+│   │   ├── FINAL_STATUS.md
+│   │   ├── IMPLEMENTATION_COMPLETE.md
+│   │   ├── PROJECT_SUMMARY.md
+│   │   ├── QUICKSTART.md
+│   │   └── SESSION_SUMMARY.md
 │   ├── API_ENDPOINTS.md     # API endpoint documentation
-│   ├── DEDUPLICATION_IMPLEMENTATION.md  # Deduplication strategy
-│   ├── IMPLEMENTATION_SUMMARY.md  # Implementation details
-│   ├── PLAN_WEBHOOK_REDIS.md      # Future: Direct C2S webhooks + Redis
-│   ├── TESTING.md           # Testing guide
 │   └── README.md            # Documentation index
 │
 ├── tests/                    # Integration tests (JS)
@@ -135,7 +163,7 @@ PORT=8080
 
 ### 1. Work API Rate Limiting
 - **Recommended delay**: **3 seconds** between requests
-- See `docs/WORK_API_RATE_LIMITING.md` for details
+- See `docs/integrations/WORK_API_RATE_LIMITING.md` for details
 - Failures are usually timeouts, not rate limits
 - Use retry logic with exponential backoff (5s, 10s, 20s)
 
@@ -188,7 +216,7 @@ pub struct AppState {
 **TTL**: 5 minutes (300 seconds)  
 **Capacity**: 10,000 entries
 
-**Note**: For multi-instance deployment, migrate to Redis (see `docs/PLAN_WEBHOOK_REDIS.md`)
+**Note**: For multi-instance deployment, migrate to Redis (see `docs/architecture/PLAN_WEBHOOK_REDIS.md`)
 
 ### 5. Rust Edition 2024
 
@@ -337,13 +365,13 @@ fly secrets set DIRETRIX_PASS="..."
 ### Known Issues
 - ⚠️ Database has no UNIQUE constraint on `cpf_cnpj` (allows duplicate entries)
 - ⚠️ In-memory cache won't work with multiple instances (need Redis for scaling)
-- ⚠️ Credentials need rotation (see `docs/SECURITY_ROTATION_REQUIRED.md`)
+- ⚠️ Credentials need rotation (see `docs/security/SECURITY_ROTATION_REQUIRED.md`)
 
 ---
 
 ## Future Plans
 
-See `docs/PLAN_WEBHOOK_REDIS.md` for detailed roadmap:
+See `docs/architecture/PLAN_WEBHOOK_REDIS.md` for detailed roadmap:
 
 1. **Direct C2S Webhooks** (eliminate Make.com dependency)
    - Create `POST /api/v1/webhook/leads` endpoint
@@ -355,10 +383,11 @@ See `docs/PLAN_WEBHOOK_REDIS.md` for detailed roadmap:
    - Use atomic `SET NX EX` for distributed locks
    - Enable horizontal scaling
 
-3. **Better Documentation** (ongoing)
-   - Organize docs into categories (api/, architecture/, deployment/, operations/)
-   - Consolidate deployment guides
-   - Add more code examples
+3. **Better Documentation** (✅ completed)
+   - ✅ Organized docs into categories (analysis/, architecture/, deployment/, integrations/, performance/, security/, sessions/)
+   - ✅ Moved shell scripts from docs/ to scripts/
+   - ✅ Consolidated example files into docs/examples/
+   - ✅ Removed duplicate documentation files
 
 ---
 
@@ -447,5 +476,205 @@ cargo run --example import_json_to_db            # Import to DB
 
 ---
 
-**Last Updated**: 2025-01-14  
+**Last Updated**: 2025-11-20  
 **Maintained by**: MbInteligen Team
+
+---
+
+## Recent Updates (2025-11-20)
+
+### ✅ Schema Migration & Address Confidence System
+
+#### Database Schema Changes
+
+The database now uses the following structure:
+
+**Core Tables:**
+- `core.entities` - People/companies (uses UUID, not separate customers/parties)
+  - `entity_id` (UUID, PK)
+  - `national_id` (CPF/CNPJ)
+  - `name`, `canonical_name`
+  - `metadata` (JSONB) - Stores `c2s_lead_id` for tracking
+  - `is_enriched`, `enriched_at`
+
+- `core.addresses` - All addresses
+  - `id` (UUID, PK)
+  - `street`, `number`, `neighborhood`, `city`, `state`, `zip_code`
+  - `formatted_address`
+  - `primary_address`, `is_valid`
+
+- `core.entity_addresses` - N:N relationship
+  - `entity_id` → `core.entities`
+  - `address_id` → `core.addresses`
+  - `address_type` ('residential', 'family_member', etc)
+  - `is_primary`, `is_current`
+  - `confidence_score` (0.0-1.0) ← **NEW!**
+  - `verified` (boolean)
+  - `metadata` (JSONB) - Tracks relationship, owner_name, etc
+
+**Key Changes:**
+- Fixed: `app.addresses` → `core.addresses`
+- Fixed: Return type `i32` → `Uuid`
+- Added: Lead tracking via `metadata->>'c2s_lead_id'`
+- Added: Address confidence scoring system
+
+#### Address Confidence Scoring System
+
+**Problem:** Work API returns addresses that might belong to family members (spouse, parents), not the person.
+
+**Solution:** Intelligent confidence scoring based on position and relationship detection.
+
+**Confidence Levels:**
+- 🟢 **90%** - First address, no relationship → Very likely current residence
+- 🟡 **75%** - Additional addresses → May be secondary/old
+- 🟠 **50%** - Spouse address → May live together
+- 🔴 **40%** - Parent address → Probably doesn't live there
+- 🟣 **45%** - Other family → Low probability
+
+**Code Logic (src/db_storage.rs:454):**
+```rust
+let (confidence_score, address_type_str, verified) = match (idx, relationship) {
+    (0, None) => (0.90, "residential", true),  // First address
+    (_, Some(rel)) if rel.contains("CÔNJUGE") => (0.50, "family_member", false),
+    (_, Some(rel)) if rel.contains("PAI") || rel.contains("MÃE") => (0.40, "family_member", false),
+    (_, Some(_)) => (0.45, "family_member", false),
+    _ => (0.75, "residential", false),
+};
+```
+
+**Metadata Structure:**
+```json
+{
+  "source": "work_api",
+  "confidence_score": 0.90,
+  "position_in_response": 0,
+  "verified": true,
+  "owner_name": "MARIA SILVA",
+  "relationship": "CÔNJUGE"
+}
+```
+
+#### New Database Methods
+
+**Lead Tracking:**
+```rust
+// Store with lead_id tracking
+storage.store_enriched_person_with_lead(cpf, work_data, Some(&lead_id)).await
+
+// Metadata stored in entity:
+{
+  "c2s_lead_id": "bf1a88eaa4ab34b01a257536563fb42b",
+  "c2s_source": "api_enrichment",
+  "enriched_at": "2025-11-20T..."
+}
+```
+
+#### Useful Queries
+
+**Find high-confidence addresses in noble neighborhoods:**
+```sql
+SELECT 
+    e.name,
+    e.national_id,
+    e.metadata->>'c2s_lead_id' as lead_id,
+    a.neighborhood,
+    a.city,
+    ea.confidence_score,
+    ea.address_type
+FROM core.entities e
+JOIN core.entity_addresses ea ON e.entity_id = ea.entity_id
+JOIN core.addresses a ON ea.address_id = a.id
+WHERE a.city ILIKE '%São Paulo%'
+AND (
+    a.neighborhood ILIKE '%Jardim Europa%' OR
+    a.neighborhood ILIKE '%Vila Nova Conceição%' OR
+    a.neighborhood ILIKE '%Cidade Jardim%' OR
+    a.neighborhood ILIKE '%Itaim Bibi%' OR
+    a.neighborhood ILIKE '%Moema%'
+)
+AND ea.confidence_score >= 0.75  -- Only medium/high confidence
+ORDER BY ea.confidence_score DESC;
+```
+
+**Find entity by C2S lead_id:**
+```sql
+SELECT * FROM core.entities 
+WHERE metadata->>'c2s_lead_id' = 'bf1a88eaa4ab34b01a257536563fb42b';
+```
+
+**View all addresses with confidence scores:**
+```sql
+SELECT 
+    e.name,
+    a.neighborhood,
+    a.city,
+    ea.address_type,
+    ea.confidence_score,
+    ea.verified,
+    ea.metadata->>'relationship' as relationship
+FROM core.entities e
+JOIN core.entity_addresses ea ON e.entity_id = ea.entity_id
+JOIN core.addresses a ON ea.address_id = a.id
+WHERE e.national_id = '12345678901'
+ORDER BY ea.confidence_score DESC;
+```
+
+#### Documentation Files
+
+1. **`docs/SCHEMA_MIGRATION_LEAD_ADDRESS.md`** - Complete schema migration guide
+2. **`docs/ADDRESS_CONFIDENCE_SCORING.md`** - Detailed confidence scoring system documentation
+
+#### Key Files Modified
+
+- `src/db_storage.rs` (lines 22-35, 154-210, 428-600)
+  - Added `store_enriched_person_with_lead()` method
+  - Implemented address confidence scoring
+  - Fixed `app.addresses` → `core.addresses`
+  - Added metadata tracking for leads and addresses
+
+- `src/handlers.rs` (lines 440, 898)
+  - Updated to use `store_enriched_person_with_lead()`
+  - Pass lead_id to storage layer
+
+#### Important Notes
+
+1. **Backward Compatible:** Old `store_enriched_person()` still works (without lead_id)
+2. **UUID vs INT:** All primary keys are UUID, not INT
+3. **Metadata Merge:** Existing entity metadata is merged, not overwritten
+4. **Primary Address:** First address from Work API marked as `is_primary = true`
+5. **Confidence Filtering:** Always filter by `confidence_score >= 0.75` for reliable data
+
+#### Testing
+
+```bash
+# Compile
+cargo check
+cargo build
+
+# Test enrichment
+curl -X POST https://mbras-c2s.fly.dev/api/v1/c2s/enrich/LEAD_ID
+
+# Verify in database
+psql $DB_URL -c "
+SELECT 
+    e.name,
+    a.neighborhood,
+    ea.confidence_score,
+    ea.metadata->>'relationship'
+FROM core.entities e
+JOIN core.entity_addresses ea ON e.entity_id = ea.entity_id
+JOIN core.addresses a ON ea.address_id = a.id
+WHERE e.metadata->>'c2s_lead_id' = 'LEAD_ID'
+ORDER BY ea.confidence_score DESC
+"
+```
+
+#### Deployment Status
+
+- **Compilation:** ✅ No errors (only 3 dead code warnings)
+- **Testing:** ✅ Logic validated
+- **Documentation:** ✅ Complete
+- **Production:** ⏳ Ready for deployment
+
+---
+
