@@ -6,6 +6,8 @@ mod gateway_client;
 mod handlers;
 mod models;
 mod services;
+mod webhook_handler;
+mod webhook_models;
 
 use axum::{
     routing::{get, post},
@@ -101,6 +103,8 @@ async fn main() -> anyhow::Result<()> {
             "/api/v1/leads/process",
             get(handlers::trigger_lead_processing),
         )
+        // C2S webhook endpoint (replaces Make.com)
+        .route("/api/v1/webhooks/c2s", post(webhook_handler::c2s_webhook))
         // Temporary test endpoint for C2S Gateway integration
         .route("/test-gateway", get(handlers::test_gateway))
         .with_state(app_state)
