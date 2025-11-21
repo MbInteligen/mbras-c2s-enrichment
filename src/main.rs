@@ -1,6 +1,7 @@
 mod config;
 mod db;
 mod db_storage;
+mod enrichment;
 mod errors;
 mod gateway_client;
 mod handlers;

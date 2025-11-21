@@ -539,7 +539,7 @@ fn multiply_range_values(range_str: &str, multiplier: f64) -> String {
 }
 
 /// Format enriched Work API data into a readable message for C2S
-fn format_enriched_message(customer_name: &str, work_data: &WorkApiCompleteResponse) -> String {
+pub fn format_enriched_message(customer_name: &str, work_data: &WorkApiCompleteResponse) -> String {
     tracing::info!("Formatting message for: {}", customer_name);
     tracing::info!(
         "Work data has keys: {:?}",

@@ -38,7 +38,14 @@ pub async fn c2s_webhook(
 
     // 3. Process each event
     for event in events {
-        match process_webhook_event(&state.db, event).await {
+        match process_webhook_event(
+            &state.db,
+            event,
+            &state.config,
+            state.gateway_client.clone(),
+        )
+        .await
+        {
             Ok(ProcessResult::Processed) => {
                 processed += 1;
             }
@@ -142,6 +149,8 @@ fn parse_timestamp(timestamp_str: &str) -> Result<DateTime<Utc>, AppError> {
 async fn process_webhook_event(
     db: &PgPool,
     event: WebhookEvent,
+    config: &crate::config::Config,
+    gateway_client: Option<crate::gateway_client::C2sGatewayClient>,
 ) -> Result<ProcessResult, AppError> {
     let lead_id = event.id.clone();
 
@@ -180,7 +189,14 @@ async fn process_webhook_event(
     .await?;
 
     // 3. Spawn background enrichment job
-    spawn_enrichment_job(db.clone(), lead_id.clone(), updated_at_ts, event);
+    spawn_enrichment_job(
+        db.clone(),
+        lead_id.clone(),
+        updated_at_ts,
+        event,
+        config.clone(),
+        gateway_client,
+    );
 
     Ok(ProcessResult::Processed)
 }
@@ -247,6 +263,8 @@ fn spawn_enrichment_job(
     lead_id: String,
     updated_at: DateTime<Utc>,
     event: WebhookEvent,
+    config: crate::config::Config,
+    gateway_client: Option<crate::gateway_client::C2sGatewayClient>,
 ) {
     tokio::spawn(async move {
         tracing::info!("Starting background enrichment for lead_id={}", lead_id);
@@ -257,11 +275,8 @@ fn spawn_enrichment_job(
             return;
         }
 
-        // TODO: Implement full enrichment workflow
-        // For now, just log and mark as completed
-        // In the next iteration, we'll call the existing c2s_enrich_lead logic
-
-        match enrich_lead_workflow(&db, &lead_id, event).await {
+        // Run full enrichment workflow
+        match enrich_lead_workflow(&db, &lead_id, event, &config, gateway_client.as_ref()).await {
             Ok(_) => {
                 tracing::info!("Successfully enriched lead_id={}", lead_id);
                 if let Err(e) = mark_webhook_completed(&db, &lead_id, &updated_at).await {
@@ -369,35 +384,57 @@ async fn mark_webhook_failed(
     Ok(())
 }
 
-/// Placeholder for full enrichment workflow
+/// Full enrichment workflow for webhook events
 ///
-/// TODO: Extract and refactor existing c2s_enrich_lead logic into reusable functions
-/// For now, this is a minimal implementation
+/// This function orchestrates the complete enrichment process:
+/// 1. Extract customer data from webhook
+/// 2. Find CPF via Diretrix (phone/email lookup)
+/// 3. Enrich with Work API
+/// 4. Format and send message to C2S
+/// 5. Store in database
 async fn enrich_lead_workflow(
-    _db: &PgPool,
+    db: &PgPool,
     lead_id: &str,
     event: WebhookEvent,
+    config: &crate::config::Config,
+    gateway_client: Option<&crate::gateway_client::C2sGatewayClient>,
 ) -> Result<(), AppError> {
-    tracing::debug!("Enrichment workflow for lead_id={}", lead_id);
+    tracing::info!("Starting enrichment workflow for lead_id={}", lead_id);
 
-    // Extract customer data
-    if let Some(customer) = event.attributes.customer {
-        tracing::debug!(
-            "Customer data: name={:?}, email={:?}, phone={:?}",
-            customer.name,
-            customer.email,
-            customer.phone
-        );
-    }
+    // Extract customer data from webhook
+    let customer = event
+        .attributes
+        .customer
+        .ok_or_else(|| AppError::BadRequest("Missing customer data in webhook".to_string()))?;
 
-    // TODO:
-    // 1. Extract CPF from customer data or use Diretrix to find it
-    // 2. Call Work API to enrich
-    // 3. Store enriched data in database
-    // 4. Send message back to C2S with enriched info
+    let customer_name = customer.name.as_deref().unwrap_or("Unknown");
+    let phone = customer.phone.as_deref().filter(|s| !s.is_empty());
+    let email = customer.email.as_deref().filter(|s| !s.is_empty());
 
-    // For now, just simulate success
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    tracing::info!(
+        "Customer: name={}, phone={:?}, email={:?}",
+        customer_name,
+        phone,
+        email
+    );
+
+    // Run full enrichment workflow using shared module
+    let result = crate::enrichment::enrich_and_send_workflow(
+        lead_id,
+        customer_name,
+        phone,
+        email,
+        db,
+        config,
+        gateway_client,
+    )
+    .await?;
+
+    tracing::info!(
+        "Enrichment complete: {} CPFs enriched, {} stored in DB",
+        result.cpfs_enriched.len(),
+        result.stored_count
+    );
 
     Ok(())
 }
