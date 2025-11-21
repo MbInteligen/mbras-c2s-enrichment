@@ -6,7 +6,6 @@ pub struct Config {
     pub port: u16,
     pub c2s_token: String,
     pub c2s_base_url: String,
-    pub c2s_gateway_url: Option<String>, // Optional for backward compatibility
     pub webhook_secret: Option<String>,  // Optional webhook secret for C2S webhooks
     pub worker_api_key: String,
     pub diretrix_base_url: String,
@@ -50,9 +49,6 @@ impl Config {
                     }
                     Ok(token)
                 })?,
-            c2s_gateway_url: std::env::var("C2S_GATEWAY_URL")
-                .ok()
-                .filter(|s| !s.trim().is_empty()),
             webhook_secret: std::env::var("WEBHOOK_SECRET")
                 .ok()
                 .filter(|s| !s.trim().is_empty()),
@@ -124,9 +120,6 @@ impl Config {
             &config.database_url[..20.min(config.database_url.len())]
         );
         tracing::debug!("C2S Base URL: {}", config.c2s_base_url);
-        if let Some(ref gateway) = config.c2s_gateway_url {
-            tracing::info!("C2S Gateway URL configured: {}", gateway);
-        }
         if config.webhook_secret.is_some() {
             tracing::info!("Webhook secret configured for C2S webhooks");
         } else {
