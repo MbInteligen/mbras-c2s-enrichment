@@ -682,15 +682,17 @@ impl C2SService {
         let mut attributes = serde_json::Map::new();
         attributes.insert("name".to_string(), json!(customer_name));
         attributes.insert("description".to_string(), json!(description));
+        attributes.insert("type_negotiation".to_string(), json!("Compra"));
+        attributes.insert(
+            "source".to_string(),
+            json!(source.unwrap_or("Google Ads")),
+        );
 
         if let Some(phone_val) = phone {
             attributes.insert("phone".to_string(), json!(phone_val));
         }
         if let Some(email_val) = email {
             attributes.insert("email".to_string(), json!(email_val));
-        }
-        if let Some(source_val) = source {
-            attributes.insert("source".to_string(), json!(source_val));
         }
         if let Some(seller_val) = seller_id {
             attributes.insert("seller_id".to_string(), json!(seller_val));
@@ -731,13 +733,33 @@ impl C2SService {
             AppError::ExternalApiError(format!("Failed to parse C2S create lead response: {}", e))
         })?;
 
-        // C2S returns {"success": true, "lead_id": "...", ...}
-        let lead_id = response_data["lead_id"]
-            .as_str()
-            .ok_or_else(|| {
-                AppError::ExternalApiError("C2S response missing 'lead_id' field".to_string())
-            })?
-            .to_string();
+        // Try to get ID from different possible locations in response
+        let lead_id = if let Some(id) = response_data
+            .get("data")
+            .and_then(|d| d.get("id"))
+            .and_then(|i| i.as_str())
+        {
+            id.to_string()
+        } else if let Some(id) = response_data.get("id").and_then(|i| i.as_str()) {
+            id.to_string()
+        } else if let Some(id) = response_data.get("lead_id").and_then(|i| i.as_str()) {
+            id.to_string()
+        } else {
+            // Try numeric IDs converted to string
+            if let Some(id) = response_data
+                .get("data")
+                .and_then(|d| d.get("id"))
+                .and_then(|i| i.as_i64())
+            {
+                id.to_string()
+            } else if let Some(id) = response_data.get("id").and_then(|i| i.as_i64()) {
+                id.to_string()
+            } else {
+                return Err(AppError::ExternalApiError(
+                    "C2S response missing 'id', 'data.id' or 'lead_id' field".to_string(),
+                ));
+            }
+        };
 
         tracing::info!("✅ Created lead in C2S: {}", lead_id);
         Ok(lead_id)

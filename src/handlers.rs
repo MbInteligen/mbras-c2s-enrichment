@@ -2,7 +2,7 @@ use crate::config::Config;
 use crate::errors::AppError;
 use crate::gateway_client::C2sGatewayClient;
 use crate::models::*;
-use crate::services::{C2SService, DiretrixService, EnrichmentService, WorkApiService};
+use crate::services::{DiretrixService, EnrichmentService, WorkApiService};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -286,22 +286,20 @@ pub async fn c2s_enrich_lead(
     tracing::info!("C2S Enrich Lead: {}", lead_id);
 
     // Initialize services
-    let c2s_service = C2SService::new(&state.config);
     let diretrix_service = DiretrixService::new(&state.config);
     let work_api_service = WorkApiService::new(&state.config);
 
-    // Step 1: Fetch lead from C2S (via gateway if available)
+    // Step 1: Fetch lead from C2S
     tracing::info!("Step 1: Fetching lead from C2S");
-    let lead_data = if let Some(ref gateway) = state.gateway_client {
-        tracing::info!("Using C2S Gateway to fetch lead");
-        let response = gateway.get_lead(&lead_id).await?;
-        serde_json::from_value(response).map_err(|e| {
-            AppError::ExternalApiError(format!("Failed to parse gateway response: {}", e))
-        })?
-    } else {
-        tracing::info!("Using direct C2S API to fetch lead");
-        c2s_service.fetch_lead(&lead_id).await?
-    };
+    
+    let gateway = state.gateway_client.as_ref().ok_or_else(|| {
+        AppError::InternalError("C2S Client not initialized".to_string())
+    })?;
+
+    let response = gateway.get_lead(&lead_id).await?;
+    let lead_data: crate::services::C2SLeadResponse = serde_json::from_value(response).map_err(|e| {
+        AppError::ExternalApiError(format!("Failed to parse C2S response: {}", e))
+    })?;
 
     let customer = &lead_data.data.attributes.customer;
     tracing::info!(
@@ -438,14 +436,13 @@ pub async fn c2s_enrich_lead(
         message_body.len()
     );
 
-    // Step 5: Send back to C2S (via gateway if available)
-    if let Some(ref gateway) = state.gateway_client {
-        tracing::info!("Using C2S Gateway to send message");
-        gateway.send_message(&lead_id, &message_body).await?;
-    } else {
-        tracing::info!("Using direct C2S API to send message");
-        c2s_service.send_message(&lead_id, &message_body).await?;
-    }
+    // Step 5: Send back to C2S
+    let gateway = state.gateway_client.as_ref().ok_or_else(|| {
+        AppError::InternalError("C2S Client not initialized".to_string())
+    })?;
+
+    tracing::info!("Using C2S Client to send message");
+    gateway.send_message(&lead_id, &message_body).await?;
 
     // Step 6: Store enriched data in database
     tracing::info!("Step 5: Storing {} person(s) in database", cpf_list.len());
@@ -733,52 +730,35 @@ pub async fn trigger_lead_processing(
         }
     }
 
-    // Initialize C2S service
-    let c2s_service = C2SService::new(&state.config);
-
-    // Fetch lead from C2S (via gateway if available)
+    // Fetch lead from C2S
     tracing::info!("Step 1: Fetching lead from C2S");
-    let lead_data = if let Some(ref gateway) = state.gateway_client {
-        tracing::info!("Using C2S Gateway to fetch lead");
-        match gateway.get_lead(lead_id).await {
-            Ok(response) => match serde_json::from_value(response) {
-                Ok(data) => {
-                    tracing::info!("✓ Successfully fetched lead from C2S Gateway");
-                    data
-                }
-                Err(e) => {
-                    tracing::error!("✗ Failed to parse gateway response: {}", e);
-                    return Ok(Json(json!({
-                        "success": false,
-                        "message": format!("Failed to parse gateway response: {}", e),
-                        "lead_id": lead_id
-                    })));
-                }
-            },
-            Err(e) => {
-                tracing::error!("✗ Failed to fetch lead from C2S Gateway: {}", e);
-                return Ok(Json(json!({
-                    "success": false,
-                    "message": format!("Failed to fetch lead from C2S Gateway: {}", e),
-                    "lead_id": lead_id
-                })));
-            }
-        }
-    } else {
-        tracing::info!("Using direct C2S API to fetch lead");
-        match c2s_service.fetch_lead(lead_id).await {
+    
+    let gateway = state.gateway_client.as_ref().ok_or_else(|| {
+        AppError::InternalError("C2S Client not initialized".to_string())
+    })?;
+
+    let lead_data: crate::services::C2SLeadResponse = match gateway.get_lead(lead_id).await {
+        Ok(response) => match serde_json::from_value(response) {
             Ok(data) => {
                 tracing::info!("✓ Successfully fetched lead from C2S");
                 data
             }
             Err(e) => {
-                tracing::error!("✗ Failed to fetch lead from C2S: {}", e);
+                tracing::error!("✗ Failed to parse C2S response: {}", e);
                 return Ok(Json(json!({
                     "success": false,
-                    "message": format!("Failed to fetch lead from C2S: {}", e),
+                    "message": format!("Failed to parse C2S response: {}", e),
                     "lead_id": lead_id
                 })));
             }
+        },
+        Err(e) => {
+            tracing::error!("✗ Failed to fetch lead from C2S: {}", e);
+            return Ok(Json(json!({
+                "success": false,
+                "message": format!("Failed to fetch lead from C2S: {}", e),
+                "lead_id": lead_id
+            })));
         }
     };
 
@@ -964,15 +944,15 @@ pub async fn trigger_lead_processing(
         }
     }
 
-    // Step 6: Send enriched data back to C2S (via gateway if available)
+    // Step 6: Send enriched data back to C2S
     tracing::info!("Step 6: Sending enriched data to C2S");
-    let send_result = if let Some(ref gateway) = state.gateway_client {
-        tracing::info!("Using C2S Gateway to send message");
-        gateway.send_message(lead_id, &full_message).await
-    } else {
-        tracing::info!("Using direct C2S API to send message");
-        c2s_service.send_message(lead_id, &full_message).await
-    };
+    
+    let gateway = state.gateway_client.as_ref().ok_or_else(|| {
+        AppError::InternalError("C2S Client not initialized".to_string())
+    })?;
+
+    tracing::info!("Using C2S Client to send message");
+    let send_result = gateway.send_message(lead_id, &full_message).await;
 
     match send_result {
         Ok(_) => {
