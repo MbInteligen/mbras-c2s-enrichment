@@ -13,6 +13,7 @@ pub enum AppError {
     BadRequest(String),
     ExternalApiError(String),
     InternalError(String),
+    Unauthorized(String),
 }
 
 impl fmt::Display for AppError {
@@ -23,6 +24,7 @@ impl fmt::Display for AppError {
             AppError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
             AppError::ExternalApiError(msg) => write!(f, "External API error: {}", msg),
             AppError::InternalError(msg) => write!(f, "Internal error: {}", msg),
+            AppError::Unauthorized(msg) => write!(f, "Unauthorized: {}", msg),
         }
     }
 }
@@ -52,6 +54,10 @@ impl IntoResponse for AppError {
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Internal server error".to_string(),
                 )
+            }
+            AppError::Unauthorized(msg) => {
+                tracing::warn!("Unauthorized access: {}", msg);
+                (StatusCode::UNAUTHORIZED, "Unauthorized".to_string())
             }
         };
 
