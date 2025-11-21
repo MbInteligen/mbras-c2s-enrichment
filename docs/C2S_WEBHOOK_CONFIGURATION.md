@@ -63,30 +63,68 @@ C2S supports three webhook events:
 
 ---
 
-### Option 2: Via C2S API (Advanced)
+### Option 2: Via C2S API (Official Method)
 
-If webhook configuration must be done via API:
+**Official Endpoint**: `POST https://api.contact2sale.com/integration/leads/subscribe`
 
+**Documentation**: https://api.contact2sale.com/docs/api#webhook
+
+Subscribe to each webhook event separately:
+
+#### Subscribe to `on_create_lead`:
 ```bash
-curl -X POST https://api.contact2sale.com/api/v1/webhooks \
-  -H "Authorization: Bearer YOUR_C2S_API_TOKEN" \
+curl -X POST https://api.contact2sale.com/integration/leads/subscribe \
   -H "Content-Type: application/json" \
+  -H "Authentication: Bearer YOUR_C2S_JWT_TOKEN" \
   -d '{
-    "url": "https://mbras-c2s.fly.dev/api/v1/webhooks/c2s",
-    "hook_action": "on_create_lead",
-    "headers": {
-      "X-Webhook-Token": "a29d031c3ce8309a1e33f3846b3ff5afa34b29e6d287f5236a7a76932932eddc"
-    },
-    "active": true
+    "hook_url": "https://mbras-c2s.fly.dev/api/v1/webhooks/c2s",
+    "hook_action": "on_create_lead"
   }'
 ```
 
-Repeat for each `hook_action`:
-- `on_create_lead`
-- `on_update_lead`
-- `on_close_lead` (optional)
+**Expected Response** (200):
+```json
+{
+  "success": true,
+  "message": "Subscribed successfully"
+}
+```
 
-**Note**: Check C2S API documentation for exact endpoint and payload format.
+**Error Response** (422):
+```json
+{
+  "success": false,
+  "msg": "hook_action not found"
+}
+```
+
+#### Subscribe to `on_update_lead`:
+```bash
+curl -X POST https://api.contact2sale.com/integration/leads/subscribe \
+  -H "Content-Type: application/json" \
+  -H "Authentication: Bearer YOUR_C2S_JWT_TOKEN" \
+  -d '{
+    "hook_url": "https://mbras-c2s.fly.dev/api/v1/webhooks/c2s",
+    "hook_action": "on_update_lead"
+  }'
+```
+
+#### Subscribe to `on_close_lead` (Optional):
+```bash
+curl -X POST https://api.contact2sale.com/integration/leads/subscribe \
+  -H "Content-Type: application/json" \
+  -H "Authentication: Bearer YOUR_C2S_JWT_TOKEN" \
+  -d '{
+    "hook_url": "https://mbras-c2s.fly.dev/api/v1/webhooks/c2s",
+    "hook_action": "on_close_lead"
+  }'
+```
+
+**Notes**:
+- ⚠️ `hook_action` is a **required field**
+- ⚠️ Invalid `hook_action` returns **422 error**
+- Authentication header uses `Bearer JWT` token (not API key)
+- Webhook data format matches `GET /leads/{id}` response
 
 ---
 
