@@ -11,6 +11,9 @@ use crate::db_storage::EnrichmentStorage;
 use crate::errors::AppError;
 use crate::gateway_client::C2sGatewayClient;
 use crate::services::{C2SService, DiretrixService, WorkApiService};
+use phonenumber::country::Id as CountryId;
+use phonenumber::Mode;
+use regex::Regex;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
@@ -21,6 +24,87 @@ pub struct CpfLookupResult {
     pub same_person: bool,
 }
 
+/// Validate email address
+///
+/// Checks for:
+/// - Basic email format (contains @ and .)
+/// - Fake/placeholder patterns (repeated digits like 9999, 1111)
+/// - Minimum length requirements
+/// - Valid domain structure
+pub fn is_valid_email(email: &str) -> bool {
+    // Basic checks
+    if email.len() < 5 || !email.contains('@') || !email.contains('.') {
+        return false;
+    }
+
+    // Detect fake patterns (repeated digits)
+    let fake_patterns = [
+        "999999",    // Common fake: 1199999999333@gmail.com
+        "111111",    // Common fake: 1111111111@
+        "000000",    // Common fake: 000000@
+        "123456789", // Sequential fake
+    ];
+
+    for pattern in &fake_patterns {
+        if email.contains(pattern) {
+            tracing::warn!(
+                "❌ Invalid email detected (fake pattern '{}'): {}",
+                pattern,
+                email
+            );
+            return false;
+        }
+    }
+
+    // RFC 5322 simplified email regex
+    // Matches: local@domain.tld
+    let email_regex = Regex::new(
+        r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
+    ).unwrap();
+
+    if !email_regex.is_match(email) {
+        tracing::warn!("❌ Invalid email format: {}", email);
+        return false;
+    }
+
+    true
+}
+
+/// Validate and normalize Brazilian phone number
+///
+/// Uses phonenumber library (port of Google's libphonenumber) to:
+/// - Parse phone number with Brazilian region (BR)
+/// - Validate if it's a valid Brazilian number
+/// - Return normalized E.164 format (+5511987654321)
+///
+/// Returns: (is_valid, normalized_phone_or_error_msg)
+pub fn validate_br_phone(raw: &str) -> (bool, String) {
+    // Skip empty or very short strings
+    if raw.trim().is_empty() || raw.len() < 8 {
+        return (false, "Phone too short".to_string());
+    }
+
+    // Parse with Brazilian country code
+    match phonenumber::parse(Some(CountryId::BR), raw) {
+        Ok(number) => {
+            // Check if valid
+            if phonenumber::is_valid(&number) {
+                // Format to E.164 (+5511987654321)
+                let formatted = number.format().mode(Mode::E164).to_string();
+                tracing::debug!("✓ Valid BR phone: {} → {}", raw, formatted);
+                (true, formatted)
+            } else {
+                tracing::warn!("❌ Invalid BR phone number: {}", raw);
+                (false, "Invalid Brazilian phone number".to_string())
+            }
+        }
+        Err(e) => {
+            tracing::warn!("❌ Failed to parse BR phone '{}': {:?}", raw, e);
+            (false, format!("Parse error: {:?}", e))
+        }
+    }
+}
+
 /// Find CPF(s) from phone and/or email using Diretrix API
 pub async fn find_cpf_via_diretrix(
     phone: Option<&str>,
@@ -29,10 +113,19 @@ pub async fn find_cpf_via_diretrix(
 ) -> Result<CpfLookupResult, AppError> {
     let diretrix_service = DiretrixService::new(config);
 
-    // Parallel lookup - search by phone AND email separately
-    let phone_lookup = if let Some(phone_number) = phone {
+    // Validate and normalize phone before lookup
+    let validated_phone = if let Some(phone_number) = phone {
         if !phone_number.is_empty() {
-            diretrix_service.search_by_phone(phone_number).await.ok()
+            let (is_valid, normalized) = validate_br_phone(phone_number);
+            if is_valid {
+                Some(normalized)
+            } else {
+                tracing::warn!(
+                    "Skipping invalid phone for Diretrix lookup: {}",
+                    phone_number
+                );
+                None
+            }
         } else {
             None
         }
@@ -40,12 +133,32 @@ pub async fn find_cpf_via_diretrix(
         None
     };
 
-    let email_lookup = if let Some(email_addr) = email {
-        if !email_addr.is_empty() {
-            diretrix_service.search_by_email(email_addr).await.ok()
+    // Validate email before lookup
+    let validated_email = if let Some(email_addr) = email {
+        if !email_addr.is_empty() && is_valid_email(email_addr) {
+            Some(email_addr.to_string())
         } else {
+            if !email_addr.is_empty() {
+                tracing::warn!(
+                    "Skipping invalid/fake email for Diretrix lookup: {}",
+                    email_addr
+                );
+            }
             None
         }
+    } else {
+        None
+    };
+
+    // Parallel lookup - search by phone AND email separately (only if validated)
+    let phone_lookup = if let Some(ref phone_number) = validated_phone {
+        diretrix_service.search_by_phone(phone_number).await.ok()
+    } else {
+        None
+    };
+
+    let email_lookup = if let Some(ref email_addr) = validated_email {
+        diretrix_service.search_by_email(email_addr).await.ok()
     } else {
         None
     };

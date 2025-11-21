@@ -41,6 +41,9 @@ regex = "1"
 # Caching
 moka = { version = "0.12", features = ["future"] }
 
+# Phone number validation (Brazilian numbers)
+phonenumber = "0.3"
+
 [profile.release]
 opt-level = 3
 lto = true
