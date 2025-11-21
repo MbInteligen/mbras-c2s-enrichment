@@ -405,7 +405,7 @@ pub async fn c2s_enrich_lead(
         }
         (Some(cpf), None) | (None, Some(cpf)) => {
             tracing::info!("Found CPF from single source: {}", cpf);
-            (vec![cpf.clone()], true)
+            (vec![cpf.clone()], false)
         }
         (None, None) => {
             tracing::error!("Could not find CPF from either phone or email");
@@ -880,7 +880,7 @@ pub async fn trigger_lead_processing(
         }
         (Some(cpf), None) | (None, Some(cpf)) => {
             tracing::info!("Found CPF from single source: {}", cpf);
-            (vec![cpf.clone()], true)
+            (vec![cpf.clone()], false)
         }
         (None, None) => {
             tracing::error!("Could not find CPF from either phone or email");

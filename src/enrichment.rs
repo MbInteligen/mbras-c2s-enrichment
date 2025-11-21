@@ -86,7 +86,7 @@ pub async fn find_cpf_via_diretrix(
         }
         (Some(cpf), None) | (None, Some(cpf)) => {
             tracing::info!("Found CPF from single source: {}", cpf);
-            (vec![cpf.clone()], true)
+            (vec![cpf.clone()], false)
         }
         (None, None) => {
             tracing::error!("Could not find CPF from either phone or email");
