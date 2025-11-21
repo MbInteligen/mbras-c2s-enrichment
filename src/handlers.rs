@@ -291,15 +291,15 @@ pub async fn c2s_enrich_lead(
 
     // Step 1: Fetch lead from C2S
     tracing::info!("Step 1: Fetching lead from C2S");
-    
-    let gateway = state.gateway_client.as_ref().ok_or_else(|| {
-        AppError::InternalError("C2S Client not initialized".to_string())
-    })?;
+
+    let gateway = state
+        .gateway_client
+        .as_ref()
+        .ok_or_else(|| AppError::InternalError("C2S Client not initialized".to_string()))?;
 
     let response = gateway.get_lead(&lead_id).await?;
-    let lead_data: crate::services::C2SLeadResponse = serde_json::from_value(response).map_err(|e| {
-        AppError::ExternalApiError(format!("Failed to parse C2S response: {}", e))
-    })?;
+    let lead_data: crate::services::C2SLeadResponse = serde_json::from_value(response)
+        .map_err(|e| AppError::ExternalApiError(format!("Failed to parse C2S response: {}", e)))?;
 
     let customer = &lead_data.data.attributes.customer;
     tracing::info!(
@@ -437,38 +437,38 @@ pub async fn c2s_enrich_lead(
     );
 
     // Step 5: Send back to C2S
-    let gateway = state.gateway_client.as_ref().ok_or_else(|| {
-        AppError::InternalError("C2S Client not initialized".to_string())
-    })?;
+    let gateway = state
+        .gateway_client
+        .as_ref()
+        .ok_or_else(|| AppError::InternalError("C2S Client not initialized".to_string()))?;
 
     tracing::info!("Using C2S Client to send message");
     gateway.send_message(&lead_id, &message_body).await?;
 
-    // Step 6: Store enriched data in database
-    tracing::info!("Step 5: Storing {} person(s) in database", cpf_list.len());
-    let storage = crate::db_storage::EnrichmentStorage::new(state.db.clone());
-
-    let mut stored_entity_ids = Vec::new();
-    for (idx, cpf) in cpf_list.iter().enumerate() {
-        match storage
-            .store_enriched_person_with_lead(cpf, &enriched_data[idx], Some(&lead_id))
-            .await
-        {
-            Ok(entity_id) => {
-                tracing::info!(
-                    "✓ Stored CPF {} → entity_id: {} (lead_id: {})",
-                    cpf,
-                    entity_id,
-                    lead_id
-                );
-                stored_entity_ids.push(entity_id);
-            }
-            Err(e) => {
-                tracing::error!("✗ Failed to store CPF {}: {}", cpf, e);
-                // Don't fail the whole request, just log the error
-            }
-        }
-    }
+    // Step 6: Store enriched data in database (TEMPORARILY DISABLED)
+    tracing::info!("Step 5: Skipping database storage (temporarily disabled)");
+    // let storage = crate::db_storage::EnrichmentStorage::new(state.db.clone());
+    // let mut stored_entity_ids = Vec::new();
+    // for (idx, cpf) in cpf_list.iter().enumerate() {
+    //     match storage
+    //         .store_enriched_person_with_lead(cpf, &enriched_data[idx], Some(&lead_id))
+    //         .await
+    //     {
+    //         Ok(entity_id) => {
+    //             tracing::info!(
+    //                 "✓ Stored CPF {} → entity_id: {} (lead_id: {})",
+    //                 cpf,
+    //                 entity_id,
+    //                 lead_id
+    //             );
+    //             stored_entity_ids.push(entity_id);
+    //         }
+    //         Err(e) => {
+    //             tracing::error!("✗ Failed to store CPF {}: {}", cpf, e);
+    //             // Don't fail the whole request, just log the error
+    //         }
+    //     }
+    // }
 
     Ok(Json(json!({
         "success": true,
@@ -476,8 +476,8 @@ pub async fn c2s_enrich_lead(
         "customer_name": customer.name,
         "enriched": true,
         "message_sent": true,
-        "stored_in_db": stored_entity_ids.len(),
-        "entity_ids": stored_entity_ids
+        "stored_in_db": 0,
+        "entity_ids": []
     })))
 }
 
@@ -732,10 +732,11 @@ pub async fn trigger_lead_processing(
 
     // Fetch lead from C2S
     tracing::info!("Step 1: Fetching lead from C2S");
-    
-    let gateway = state.gateway_client.as_ref().ok_or_else(|| {
-        AppError::InternalError("C2S Client not initialized".to_string())
-    })?;
+
+    let gateway = state
+        .gateway_client
+        .as_ref()
+        .ok_or_else(|| AppError::InternalError("C2S Client not initialized".to_string()))?;
 
     let lead_data: crate::services::C2SLeadResponse = match gateway.get_lead(lead_id).await {
         Ok(response) => match serde_json::from_value(response) {
@@ -917,39 +918,37 @@ pub async fn trigger_lead_processing(
 
     tracing::info!("Formatted message length: {} chars", full_message.len());
 
-    // Step 5: Store enriched data in database
-    tracing::info!(
-        "Step 5: Storing {} person(s) in database",
-        cpfs_to_process.len()
-    );
-    let mut stored_entity_ids = Vec::new();
+    // Step 5: Store enriched data in database (TEMPORARILY DISABLED)
+    tracing::info!("Step 5: Skipping database storage (temporarily disabled)");
+    let stored_entity_ids: Vec<uuid::Uuid> = Vec::new();
 
-    for (idx, cpf) in cpfs_to_process.iter().enumerate() {
-        match storage
-            .store_enriched_person_with_lead(cpf, &enriched_data[idx], Some(lead_id))
-            .await
-        {
-            Ok(entity_id) => {
-                tracing::info!(
-                    "✓ Stored CPF {} → entity_id: {} (lead_id: {})",
-                    cpf,
-                    entity_id,
-                    lead_id
-                );
-                stored_entity_ids.push(entity_id);
-            }
-            Err(e) => {
-                tracing::error!("✗ Failed to store CPF {}: {}", cpf, e);
-            }
-        }
-    }
+    // for (idx, cpf) in cpfs_to_process.iter().enumerate() {
+    //     match storage
+    //         .store_enriched_person_with_lead(cpf, &enriched_data[idx], Some(lead_id))
+    //         .await
+    //     {
+    //         Ok(entity_id) => {
+    //             tracing::info!(
+    //                 "✓ Stored CPF {} → entity_id: {} (lead_id: {})",
+    //                 cpf,
+    //                 entity_id,
+    //                 lead_id
+    //             );
+    //             stored_entity_ids.push(entity_id);
+    //         }
+    //         Err(e) => {
+    //             tracing::error!("✗ Failed to store CPF {}: {}", cpf, e);
+    //         }
+    //     }
+    // }
 
     // Step 6: Send enriched data back to C2S
     tracing::info!("Step 6: Sending enriched data to C2S");
-    
-    let gateway = state.gateway_client.as_ref().ok_or_else(|| {
-        AppError::InternalError("C2S Client not initialized".to_string())
-    })?;
+
+    let gateway = state
+        .gateway_client
+        .as_ref()
+        .ok_or_else(|| AppError::InternalError("C2S Client not initialized".to_string()))?;
 
     tracing::info!("Using C2S Client to send message");
     let send_result = gateway.send_message(lead_id, &full_message).await;

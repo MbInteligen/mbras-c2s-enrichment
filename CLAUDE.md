@@ -4,6 +4,24 @@
 
 ---
 
+## ⚠️ CURRENT STATUS (2025-11-21)
+
+**Deployment**: Version 29 (deployed and working)  
+**URL**: https://mbras-c2s.fly.dev  
+
+**CRITICAL NOTES**:
+1. ✅ **C2S Message Endpoint VERIFIED**: Use `/integration/leads/{lead_id}/create_message` (NOT `/integration/messages`)
+2. ⚠️ **Database Storage DISABLED**: Code commented out in `handlers.rs` (lines 448-471, 920-945) - needs fixing later
+3. ✅ **Enrichment Working**: Messages successfully sent to C2S
+4. 🔧 **TODO**: Re-enable and fix database storage code after schema is properly set up
+
+**Last Working Test**:
+- Lead: Marco Sanches (`f4ed97f09fa9544b713a2f833462e20c`)
+- Result: ✅ Enriched message successfully sent to C2S
+- Response: `{"success": true, "message_sent": true, "stored_in_db": 0}`
+
+---
+
 ## Project Overview
 
 **Name**: `rust-c2s-api`  
@@ -13,7 +31,7 @@
 **Tech Stack**:
 - Language: Rust (Edition 2024, requires nightly toolchain)
 - Web Framework: Axum
-- Database: PostgreSQL (Neon.tech hosted)
+- Database: PostgreSQL (Neon.tech hosted) - **Schema needs setup**
 - ORM: SQLx (async)
 - HTTP Client: Reqwest
 - Deployment: Fly.io (256MB instance, São Paulo region)
@@ -320,7 +338,7 @@ psql $DB_URL -f docs/schemas/01_init.sql
 - **Purpose**: CRM/lead management
 - **Endpoints**:
   - Fetch lead: `GET /integration/lead/<lead_id>`
-  - Send message: `POST /integration/messages`
+  - Send message: `POST /integration/leads/{lead_id}/create_message` ⚠️ **VERIFIED CORRECT**
 
 ---
 
