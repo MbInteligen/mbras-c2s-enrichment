@@ -79,10 +79,7 @@ impl C2sGatewayClient {
         attributes.insert("name".to_string(), json!(customer_name));
         attributes.insert("description".to_string(), json!(description));
         attributes.insert("type_negotiation".to_string(), json!("Compra"));
-        attributes.insert(
-            "source".to_string(),
-            json!(source.unwrap_or("Google Ads")),
-        );
+        attributes.insert("source".to_string(), json!(source.unwrap_or("Google Ads")));
 
         if let Some(phone_val) = phone {
             attributes.insert("phone".to_string(), json!(phone_val));
@@ -139,14 +136,20 @@ impl C2sGatewayClient {
         } else if let Some(id) = response_data.get("lead_id").and_then(|i| i.as_str()) {
             id.to_string()
         } else {
-             // Fallback: check if it's a number and convert to string
-            if let Some(id) = response_data.get("data").and_then(|d| d.get("id")).and_then(|i| i.as_i64()) {
+            // Fallback: check if it's a number and convert to string
+            if let Some(id) = response_data
+                .get("data")
+                .and_then(|d| d.get("id"))
+                .and_then(|i| i.as_i64())
+            {
                 id.to_string()
             } else if let Some(id) = response_data.get("id").and_then(|i| i.as_i64()) {
                 id.to_string()
             } else {
                 tracing::warn!("Unexpected C2S response format: {:?}", response_data);
-                return Err(AppError::ExternalApiError("Lead creation response missing 'id' field".to_string()));
+                return Err(AppError::ExternalApiError(
+                    "Lead creation response missing 'id' field".to_string(),
+                ));
             }
         };
 
@@ -156,7 +159,10 @@ impl C2sGatewayClient {
 
     /// Send message to lead in C2S
     pub async fn send_message(&self, lead_id: &str, message: &str) -> Result<(), AppError> {
-        let url = format!("{}/integration/leads/{}/create_message", self.base_url, lead_id);
+        let url = format!(
+            "{}/integration/leads/{}/create_message",
+            self.base_url, lead_id
+        );
         tracing::info!("Sending message to lead {} in C2S", lead_id);
 
         // C2S expects { "leadId": "...", "body": "..." }
@@ -169,6 +175,7 @@ impl C2sGatewayClient {
             .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.token))
+            .header("Content-Type", "application/json")
             .json(&body)
             .send()
             .await

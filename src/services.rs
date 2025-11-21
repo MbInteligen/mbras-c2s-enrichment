@@ -683,10 +683,7 @@ impl C2SService {
         attributes.insert("name".to_string(), json!(customer_name));
         attributes.insert("description".to_string(), json!(description));
         attributes.insert("type_negotiation".to_string(), json!("Compra"));
-        attributes.insert(
-            "source".to_string(),
-            json!(source.unwrap_or("Google Ads")),
-        );
+        attributes.insert("source".to_string(), json!(source.unwrap_or("Google Ads")));
 
         if let Some(phone_val) = phone {
             attributes.insert("phone".to_string(), json!(phone_val));
