@@ -12,6 +12,11 @@ pub struct Config {
     pub diretrix_base_url: String,
     pub diretrix_user: String,
     pub diretrix_pass: String,
+
+    // Google Ads integration (optional - only required if using Google Ads webhooks)
+    pub google_ads_webhook_key: Option<String>, // Webhook verification key
+    pub c2s_default_seller_id: Option<String>,  // Default seller for new leads
+    pub c2s_description_max_length: usize,      // Max description length
 }
 
 impl Config {
@@ -100,6 +105,16 @@ impl Config {
                     }
                     Ok(pass)
                 })?,
+            google_ads_webhook_key: std::env::var("GOOGLE_ADS_WEBHOOK_KEY")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
+            c2s_default_seller_id: std::env::var("C2S_DEFAULT_SELLER_ID")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
+            c2s_description_max_length: std::env::var("C2S_DESCRIPTION_MAX_LENGTH")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(5000), // Default to 5000 chars
         };
 
         // Log successful configuration load (without sensitive values)
@@ -121,6 +136,26 @@ impl Config {
         }
         tracing::debug!("Diretrix Base URL: {}", config.diretrix_base_url);
         tracing::debug!("Server Port: {}", config.port);
+
+        // Google Ads configuration
+        if config.google_ads_webhook_key.is_some() {
+            tracing::info!("Google Ads webhook key configured");
+            if let Some(ref seller_id) = config.c2s_default_seller_id {
+                tracing::info!("C2S default seller ID: {}", seller_id);
+            } else {
+                tracing::warn!(
+                    "C2S_DEFAULT_SELLER_ID not set - Google Ads leads will have no seller assigned"
+                );
+            }
+        } else {
+            tracing::warn!(
+                "GOOGLE_ADS_WEBHOOK_KEY not configured - Google Ads webhooks will be rejected"
+            );
+        }
+        tracing::info!(
+            "C2S description max length: {} chars",
+            config.c2s_description_max_length
+        );
 
         Ok(config)
     }

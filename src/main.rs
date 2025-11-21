@@ -4,6 +4,8 @@ mod db_storage;
 mod enrichment;
 mod errors;
 mod gateway_client;
+mod google_ads_handler;
+mod google_ads_models;
 mod handlers;
 mod models;
 mod services;
@@ -56,24 +58,20 @@ async fn main() -> anyhow::Result<()> {
         .build();
     tracing::info!("Lead deduplication cache initialized");
 
-    // Initialize gateway client if URL is configured
-    let gateway_client = if let Some(ref gateway_url) = config.c2s_gateway_url {
-        match gateway_client::C2sGatewayClient::new(gateway_url.clone()) {
-            Ok(client) => {
-                tracing::info!("✓ C2S Gateway client initialized: {}", gateway_url);
-                Some(client)
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to initialize gateway client: {}. Will use direct C2S.",
-                    e
-                );
-                None
-            }
+    // Initialize C2S direct client
+    // Formerly "gateway client", now communicates directly with C2S API
+    let gateway_client = match gateway_client::C2sGatewayClient::new(
+        config.c2s_base_url.clone(),
+        config.c2s_token.clone(),
+    ) {
+        Ok(client) => {
+            tracing::info!("✓ C2S Direct Client initialized: {}", config.c2s_base_url);
+            Some(client)
         }
-    } else {
-        tracing::info!("C2S Gateway URL not configured, using direct C2S calls");
-        None
+        Err(e) => {
+            tracing::error!("Failed to initialize C2S client: {}", e);
+            None
+        }
     };
 
     // Build application state
@@ -106,8 +104,11 @@ async fn main() -> anyhow::Result<()> {
         )
         // C2S webhook endpoint (replaces Make.com)
         .route("/api/v1/webhooks/c2s", post(webhook_handler::c2s_webhook))
-        // Temporary test endpoint for C2S Gateway integration
-        .route("/test-gateway", get(handlers::test_gateway))
+        // Google Ads webhook endpoint (direct lead creation with inline enrichment)
+        .route(
+            "/api/v1/webhooks/google-ads",
+            post(google_ads_handler::google_ads_webhook_handler),
+        )
         .with_state(app_state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());

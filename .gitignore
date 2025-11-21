@@ -23,3 +23,7 @@ Thumbs.db
 # Logs
 *.log
 temp_data/
+
+# Google Ads credentials (contains secrets)
+google-ads.yaml
+**/google-ads.yaml
