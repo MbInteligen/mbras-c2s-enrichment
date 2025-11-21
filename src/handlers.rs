@@ -272,6 +272,39 @@ pub async fn process_lead(
     }
 }
 
+/// Temporary smoke test endpoint for C2S Gateway integration
+/// This will be removed after testing
+pub async fn test_gateway() -> Result<Json<serde_json::Value>, AppError> {
+    let gateway_url = std::env::var("C2S_GATEWAY_URL")
+        .unwrap_or_else(|_| "https://mbras-c2s-gateway.fly.dev".to_string());
+
+    tracing::info!("Testing gateway connectivity at: {}", gateway_url);
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| AppError::ExternalApiError(e.to_string()))?;
+
+    let response = client
+        .get(&gateway_url)
+        .send()
+        .await
+        .map_err(|e| AppError::ExternalApiError(format!("Gateway request failed: {}", e)))?;
+
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|e| AppError::ExternalApiError(format!("Failed to read response: {}", e)))?;
+
+    Ok(Json(json!({
+        "gateway_url": gateway_url,
+        "status": status.as_u16(),
+        "response": serde_json::from_str::<serde_json::Value>(&body).unwrap_or_else(|_| json!({"raw": body})),
+        "connectivity": "success"
+    })))
+}
+
 /// POST /api/v1/c2s/enrich/:lead_id
 /// Complete C2S integration flow:
 /// 1. Fetch lead from C2S
