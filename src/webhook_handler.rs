@@ -83,20 +83,28 @@ pub async fn c2s_webhook(
 fn validate_webhook_secret(state: &AppState, headers: &HeaderMap) -> Result<(), AppError> {
     // If no secret is configured, skip validation (warn was already logged at startup)
     let Some(ref expected_secret) = state.config.webhook_secret else {
+        tracing::debug!("Webhook secret not configured, skipping validation");
         return Ok(());
     };
 
-    // Extract token from header
+    // Extract token from header (optional - C2S doesn't support custom headers)
     let token = headers
         .get("X-Webhook-Token")
         .or_else(|| headers.get("x-webhook-token"))
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| AppError::Unauthorized("Missing X-Webhook-Token header".to_string()))?;
+        .and_then(|v| v.to_str().ok());
 
-    // Constant-time comparison to prevent timing attacks
-    if !constant_time_compare(token, expected_secret) {
-        tracing::warn!("Invalid webhook token received");
-        return Err(AppError::Unauthorized("Invalid webhook token".to_string()));
+    // If token is provided, validate it
+    if let Some(token_value) = token {
+        // Constant-time comparison to prevent timing attacks
+        if !constant_time_compare(token_value, expected_secret) {
+            tracing::warn!("Invalid webhook token received");
+            return Err(AppError::Unauthorized("Invalid webhook token".to_string()));
+        }
+        tracing::debug!("Webhook token validated successfully");
+    } else {
+        // No token provided - this is OK for C2S direct webhooks
+        // (C2S doesn't support custom headers in /leads/subscribe API)
+        tracing::debug!("No webhook token provided (C2S direct webhook)");
     }
 
     Ok(())
