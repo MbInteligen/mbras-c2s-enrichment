@@ -2,6 +2,7 @@ mod config;
 mod db;
 mod db_storage;
 mod errors;
+mod gateway_client;
 mod handlers;
 mod models;
 mod services;
@@ -79,6 +80,8 @@ async fn main() -> anyhow::Result<()> {
             "/api/v1/leads/process",
             get(handlers::trigger_lead_processing),
         )
+        // Temporary test endpoint for C2S Gateway integration
+        .route("/test-gateway", get(handlers::test_gateway))
         .with_state(app_state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());

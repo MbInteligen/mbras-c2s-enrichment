@@ -6,6 +6,7 @@ pub struct Config {
     pub port: u16,
     pub c2s_token: String,
     pub c2s_base_url: String,
+    pub c2s_gateway_url: Option<String>, // Optional for backward compatibility
     pub worker_api_key: String,
     pub diretrix_base_url: String,
     pub diretrix_user: String,
@@ -43,6 +44,9 @@ impl Config {
                     }
                     Ok(token)
                 })?,
+            c2s_gateway_url: std::env::var("C2S_GATEWAY_URL")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
             c2s_base_url: std::env::var("C2S_BASE_URL")
                 .map_err(|_| anyhow::anyhow!("C2S_BASE_URL environment variable required"))
                 .and_then(|url| {
@@ -101,6 +105,9 @@ impl Config {
             &config.database_url[..20.min(config.database_url.len())]
         );
         tracing::debug!("C2S Base URL: {}", config.c2s_base_url);
+        if let Some(ref gateway) = config.c2s_gateway_url {
+            tracing::info!("C2S Gateway URL configured: {}", gateway);
+        }
         tracing::debug!("Diretrix Base URL: {}", config.diretrix_base_url);
         tracing::debug!("Server Port: {}", config.port);
 
