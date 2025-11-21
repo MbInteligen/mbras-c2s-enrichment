@@ -757,11 +757,14 @@ When `C2S_GATEWAY_URL` is set:
 
 ### Testing
 
-**Integration Tests**: `./scripts/test_gateway_integration.sh`
-```
-Test Results: 8/8 PASS
-Gateway Response Time: 49ms
-Integration Status: READY
+**Integration Test Script**: `./scripts/test_gateway_integration.sh`
+
+**Quick Verification**:
+```bash
+# Check smoke endpoint
+curl http://localhost:8080/test-gateway
+
+# Expected: {"connectivity":"success","gateway_url":"https://mbras-c2s-gateway.fly.dev",...}
 ```
 
 ### Logs Example

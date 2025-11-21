@@ -138,40 +138,53 @@ fly secrets set C2S_GATEWAY_URL=https://mbras-c2s-gateway.fly.dev
 
 ## Testing Results
 
-### Local Tests ✅
+### How to Verify Integration
 
-```
-==========================================
-C2S Gateway Integration Test Suite
-==========================================
+#### Quick Verification Steps
 
-Gateway URL: https://mbras-c2s-gateway.fly.dev
-Rust API URL: http://localhost:8080
+1. **Start the Rust API locally**:
+   ```bash
+   cd /Users/ronaldo/Documents/projects/clients/mbras/tools/c2s/rust-c2s-api
+   cargo run
+   ```
 
-=== Phase 1: Gateway Direct Tests ===
-Testing: Gateway Health Check ... PASS
-Testing: Gateway Fetch Lead ... PASS
-Testing: Gateway API Docs ... PASS
+2. **Check initialization logs**:
+   ```
+   # Should see:
+   INFO rust_c2s_api::config: C2S Gateway URL configured: https://mbras-c2s-gateway.fly.dev
+   INFO rust_c2s_api: ✓ C2S Gateway client initialized: https://mbras-c2s-gateway.fly.dev
+   ```
 
-=== Phase 2: Rust API Integration Tests ===
-Testing: Rust API Health ... PASS
-Testing: Rust API Gateway Smoke Test ... PASS
-Testing: Gateway URL Configured ... PASS
+3. **Test the smoke endpoint**:
+   ```bash
+   curl http://localhost:8080/test-gateway
+   
+   # Expected response:
+   {
+     "connectivity": "success",
+     "gateway_url": "https://mbras-c2s-gateway.fly.dev",
+     "response": {
+       "name": "C2S Gateway",
+       "status": "online"
+     },
+     "status": 200
+   }
+   ```
 
-=== Phase 3: End-to-End Tests ===
-Rust → Gateway Communication: PASS
+4. **Run the integration test script**:
+   ```bash
+   ./scripts/test_gateway_integration.sh
+   ```
 
-=== Phase 4: Performance Test ===
-Gateway Response Time (49ms): PASS
+#### Expected Test Results
 
-==========================================
-Test Results
-==========================================
-Passed: 8
-Failed: 0
-
-✓ All tests passed!
-```
+The test script validates:
+- Gateway health check
+- Gateway can fetch leads
+- Rust API health check
+- Rust API smoke test endpoint
+- End-to-end communication
+- Performance (response time < 1000ms)
 
 ### Server Logs ✅
 
