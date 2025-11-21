@@ -53,10 +53,31 @@ async fn main() -> anyhow::Result<()> {
         .build();
     tracing::info!("Lead deduplication cache initialized");
 
+    // Initialize gateway client if URL is configured
+    let gateway_client = if let Some(ref gateway_url) = config.c2s_gateway_url {
+        match gateway_client::C2sGatewayClient::new(gateway_url.clone()) {
+            Ok(client) => {
+                tracing::info!("✓ C2S Gateway client initialized: {}", gateway_url);
+                Some(client)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to initialize gateway client: {}. Will use direct C2S.",
+                    e
+                );
+                None
+            }
+        }
+    } else {
+        tracing::info!("C2S Gateway URL not configured, using direct C2S calls");
+        None
+    };
+
     // Build application state
     let app_state = std::sync::Arc::new(crate::handlers::AppState {
         db: db.pool.clone(),
         config: config.clone(),
+        gateway_client,
         recent_cpf_cache,
         processing_leads_cache,
     });

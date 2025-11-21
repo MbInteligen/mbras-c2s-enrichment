@@ -7,6 +7,7 @@ use tracing;
 
 /// Client for interacting with the Python C2S Gateway
 /// This provides a cleaner interface than direct C2S API calls
+#[derive(Clone)]
 pub struct C2sGatewayClient {
     client: reqwest::Client,
     base_url: String,
