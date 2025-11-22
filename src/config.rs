@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use url::Url;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -37,10 +38,18 @@ impl Config {
                     }
                     Ok(url)
                 })?,
-            port: std::env::var("PORT")
-                .unwrap_or_else(|_| "3000".to_string())
-                .parse()
-                .map_err(|_| anyhow::anyhow!("PORT must be a valid number between 1-65535"))?,
+            port: {
+                let port: u16 = std::env::var("PORT")
+                    .unwrap_or_else(|_| "3000".to_string())
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("PORT must be a valid number between 1-65535"))?;
+
+                if port == 0 {
+                    anyhow::bail!("PORT must be greater than 0");
+                }
+
+                port
+            },
             c2s_token: std::env::var("C2S_TOKEN")
                 .map_err(|_| anyhow::anyhow!("C2S_TOKEN environment variable required"))
                 .and_then(|token| {
@@ -107,18 +116,40 @@ impl Config {
             c2s_default_seller_id: std::env::var("C2S_DEFAULT_SELLER_ID")
                 .ok()
                 .filter(|s| !s.trim().is_empty()),
-            c2s_description_max_length: std::env::var("C2S_DESCRIPTION_MAX_LENGTH")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(5000), // Default to 5000 chars
+            c2s_description_max_length: {
+                let max_len = std::env::var("C2S_DESCRIPTION_MAX_LENGTH")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(5000);
+
+                if max_len == 0 {
+                    anyhow::bail!("C2S_DESCRIPTION_MAX_LENGTH must be greater than 0");
+                }
+
+                max_len
+            },
         };
 
         // Log successful configuration load (without sensitive values)
         tracing::info!("Configuration loaded successfully");
-        tracing::debug!(
-            "Database URL: {}...",
-            &config.database_url[..20.min(config.database_url.len())]
-        );
+        // Redact DB URL credentials while keeping target info
+        if let Ok(db_url) = Url::parse(&config.database_url) {
+            let host = db_url.host_str().unwrap_or("unknown");
+            let port = db_url
+                .port_or_known_default()
+                .map(|p| format!(":{}", p))
+                .unwrap_or_default();
+            let path = db_url.path();
+            tracing::debug!(
+                "Database URL (redacted): {}://{}{}{}",
+                db_url.scheme(),
+                host,
+                port,
+                path
+            );
+        } else {
+            tracing::debug!("Database URL (redacted): <unparsable>");
+        }
         tracing::debug!("C2S Base URL: {}", config.c2s_base_url);
         if config.webhook_secret.is_some() {
             tracing::info!("Webhook secret configured for C2S webhooks");
