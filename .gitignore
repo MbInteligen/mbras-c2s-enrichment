@@ -2,7 +2,7 @@
 /target/
 **/*.rs.bk
 *.pdb
-Cargo.lock
+# Note: Cargo.lock should be committed for binary projects (ensures reproducible builds)
 
 # Environment variables
 .env
