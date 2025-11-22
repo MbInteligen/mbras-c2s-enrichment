@@ -241,6 +241,9 @@ impl EnrichmentStorage {
         if let Some(telefones) = work_data.get("telefones").and_then(|t| t.as_array()) {
             self.store_party_phones(party_id, telefones).await?;
         }
+        if let Some(enderecos) = work_data.get("enderecos").and_then(|e| e.as_array()) {
+            self.store_party_addresses(party_id, enderecos).await?;
+        }
 
         // Step 4: Store enrichment snapshot
         let quality_score = risk_score
@@ -276,6 +279,115 @@ impl EnrichmentStorage {
         );
 
         Ok(party_id)
+    }
+
+    /// Store addresses for a party (creates address rows as needed)
+    async fn store_party_addresses(
+        &self,
+        party_id: Uuid,
+        enderecos: &[serde_json::Value],
+    ) -> Result<(), AppError> {
+        for (idx, endereco) in enderecos.iter().enumerate() {
+            let street = endereco.get("logradouro").and_then(|v| v.as_str());
+            let number = endereco.get("numero").and_then(|v| v.as_str());
+            let neighborhood = endereco.get("bairro").and_then(|v| v.as_str());
+            let city = endereco.get("cidade").and_then(|v| v.as_str());
+            let state = endereco.get("uf").and_then(|v| v.as_str());
+            let zip_code = endereco.get("cep").and_then(|v| v.as_str());
+            let complement = endereco.get("complemento").and_then(|v| v.as_str());
+            let formatted = endereco.get("enderecoCompleto").and_then(|v| v.as_str());
+
+            // Skip empty addresses
+            if street.is_none() && city.is_none() && state.is_none() && zip_code.is_none() {
+                continue;
+            }
+
+            // Normalize zip to digits only
+            let normalized_zip: Option<String> =
+                zip_code.map(|z| z.chars().filter(|c| c.is_ascii_digit()).collect::<String>());
+
+            let latitude = endereco.get("latitude").and_then(|v| v.as_f64());
+            let longitude = endereco.get("longitude").and_then(|v| v.as_f64());
+
+            let address_id: Uuid = sqlx::query_scalar(
+                r#"
+                INSERT INTO core.addresses (
+                    id, street, number, neighborhood, city, state, zip_code,
+                    complement, latitude, longitude, formatted_address,
+                    created_at, updated_at
+                )
+                VALUES (
+                    gen_random_uuid(), $1, $2, $3, $4, $5, $6,
+                    $7, $8, $9, $10, now(), now()
+                )
+                RETURNING id
+                "#,
+            )
+            .bind(street)
+            .bind(number)
+            .bind(neighborhood)
+            .bind(city)
+            .bind(state)
+            .bind(normalized_zip)
+            .bind(complement)
+            .bind(latitude)
+            .bind(longitude)
+            .bind(formatted)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(AppError::DatabaseError)?;
+
+            let address_type = match endereco
+                .get("tipo")
+                .and_then(|v| v.as_str())
+                .unwrap_or("residential")
+            {
+                "commercial" => "commercial",
+                "billing" => "billing",
+                "family_member" => "family_member",
+                "other" => "other",
+                _ => "residential",
+            };
+
+            let mut metadata = json!({});
+            if let Some(fonte) = endereco.get("fonte").and_then(|v| v.as_str()) {
+                metadata["source"] = json!(fonte);
+            }
+            if let Some(tp) = endereco.get("tipo").and_then(|v| v.as_str()) {
+                metadata["legacy_type"] = json!(tp);
+            }
+
+            let confidence = if idx == 0 { 0.90 } else { 0.75 };
+            let is_primary = idx == 0;
+
+            let _ = sqlx::query(
+                r#"
+                INSERT INTO core.party_addresses (
+                    id, party_id, address_id, address_type, is_primary, is_current,
+                    verified, confidence_score, metadata, created_at, updated_at
+                )
+                VALUES (
+                    gen_random_uuid(), $1, $2, $3, $4, true,
+                    false, $5, $6, now(), now()
+                )
+                ON CONFLICT (party_id, address_id) DO UPDATE
+                SET confidence_score = GREATEST(core.party_addresses.confidence_score, EXCLUDED.confidence_score),
+                    is_primary = core.party_addresses.is_primary OR EXCLUDED.is_primary,
+                    metadata = core.party_addresses.metadata || EXCLUDED.metadata,
+                    updated_at = now()
+                "#,
+            )
+            .bind(party_id)
+            .bind(address_id)
+            .bind(address_type)
+            .bind(is_primary)
+            .bind(confidence)
+            .bind(metadata)
+            .execute(&self.pool)
+            .await;
+        }
+
+        Ok(())
     }
 
     /// Store emails for a party
@@ -381,7 +493,6 @@ impl EnrichmentStorage {
 
         Ok(())
     }
-
 }
 
 /// Parse Brazilian date format (DD/MM/YYYY) to chrono::NaiveDate

@@ -7,7 +7,7 @@ pub struct Config {
     pub port: u16,
     pub c2s_token: String,
     pub c2s_base_url: String,
-    pub webhook_secret: Option<String>,  // Optional webhook secret for C2S webhooks
+    pub webhook_secret: Option<String>, // Optional webhook secret for C2S webhooks
     pub worker_api_key: String,
     pub diretrix_base_url: String,
     pub diretrix_user: String,
