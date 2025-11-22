@@ -58,6 +58,14 @@ async fn main() -> anyhow::Result<()> {
         .build();
     tracing::info!("Lead deduplication cache initialized");
 
+    // Create contact -> CPF cache (24 hour TTL)
+    // Used to skip external API calls for known contacts
+    let contact_to_cpf_cache = Cache::builder()
+        .time_to_live(Duration::from_secs(86400))
+        .max_capacity(50_000)
+        .build();
+    tracing::info!("Contact enrichment cache initialized");
+
     // Initialize C2S direct client
     // Formerly "gateway client", now communicates directly with C2S API
     let gateway_client = match gateway_client::C2sGatewayClient::new(
@@ -81,6 +89,7 @@ async fn main() -> anyhow::Result<()> {
         gateway_client,
         recent_cpf_cache,
         processing_leads_cache,
+        contact_to_cpf_cache,
     });
 
     // Build router

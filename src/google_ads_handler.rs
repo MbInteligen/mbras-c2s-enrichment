@@ -12,7 +12,7 @@ use crate::{
     enrichment::{is_valid_email, validate_br_phone},
     errors::AppError,
     google_ads_models::GoogleAdsWebhookPayload,
-    services::{self, DiretrixService, WorkApiService},
+    services::{self, WorkApiService},
 };
 
 /// Query parameters for Google Ads webhook verification
@@ -103,7 +103,7 @@ pub async fn google_ads_webhook_handler(
 
     // Step 5: Inline enrichment (Diretrix → Work API)
     let enrichment_result = perform_inline_enrichment(
-        &app_state.config,
+        &app_state,
         cpf_from_form.as_deref(),
         phone_validated.as_deref(),
         email_validated.as_deref(),
@@ -208,7 +208,7 @@ async fn is_duplicate_lead(db: &PgPool, google_lead_id: &str) -> Result<bool, Ap
 
 /// Perform inline enrichment: Diretrix → Work API
 async fn perform_inline_enrichment(
-    config: &Config,
+    state: &std::sync::Arc<crate::handlers::AppState>,
     cpf_from_form: Option<&str>,
     phone: Option<&str>,
     email: Option<&str>,
@@ -219,52 +219,43 @@ async fn perform_inline_enrichment(
     let cpf = if let Some(cpf) = cpf_from_form {
         enrichment.push_str(&format!("📄 CPF do Formulário: {}\n", cpf));
         Some(cpf.to_string())
-    } else if let Some(phone_val) = phone {
-        // Try Diretrix lookup by phone
-        let diretrix = DiretrixService::new(config);
-        match diretrix.search_by_phone(phone_val).await {
-            Ok(results) if !results.is_empty() => {
-                let cpf_found = results[0].cpf.clone();
-                enrichment.push_str(&format!("🔍 CPF via Telefone (Diretrix): {}\n", cpf_found));
-                Some(cpf_found)
-            }
-            Ok(_) => {
-                tracing::info!("📞 Diretrix: CPF not found for phone {}", phone_val);
-                None
-            }
-            Err(e) => {
-                tracing::warn!("⚠️  Diretrix phone lookup failed: {}", e);
-                None
-            }
-        }
-    } else if let Some(email_val) = email {
-        // Try Diretrix lookup by email
-        let diretrix = DiretrixService::new(config);
-        match diretrix.search_by_email(email_val).await {
-            Ok(results) if !results.is_empty() => {
-                let cpf_found = results[0].cpf.clone();
-                enrichment.push_str(&format!("🔍 CPF via E-mail (Diretrix): {}\n", cpf_found));
-                Some(cpf_found)
-            }
-            Ok(_) => {
-                tracing::info!("📧 Diretrix: CPF not found for email {}", email_val);
-                None
-            }
-            Err(e) => {
-                tracing::warn!("⚠️  Diretrix email lookup failed: {}", e);
-                None
-            }
-        }
     } else {
-        tracing::warn!("⚠️  No CPF, phone, or email available for enrichment");
-        None
+        // Try Diretrix lookup by phone/email (using optimized lookup)
+        // First check cache/DB
+        if let Ok(Some(existing)) = crate::enrichment::find_existing_enrichment(state, phone, email).await {
+            tracing::info!("✅ CACHE/DB HIT: Found CPF {} for contact", existing.cpf);
+            Some(existing.cpf)
+        } else {
+            // Fallback to Diretrix
+            let lookup_result = crate::enrichment::find_cpf_via_diretrix(
+                phone, 
+                email, 
+                &state.config
+            ).await;
+
+            match lookup_result {
+                Ok(result) if !result.cpfs.is_empty() => {
+                    let cpf_found = result.cpfs[0].clone();
+                    enrichment.push_str(&format!("🔍 CPF Encontrado: {}\n", cpf_found));
+                    Some(cpf_found)
+                }
+                Ok(_) => {
+                    tracing::info!("📞 Diretrix: CPF not found for phone/email");
+                    None
+                }
+                Err(e) => {
+                    tracing::warn!("⚠️  Diretrix lookup failed: {}", e);
+                    None
+                }
+            }
+        }
     };
 
     // If we have CPF, enrich with Work API
     if let Some(cpf_val) = cpf {
         enrichment.push_str("\n💰 Dados Econômicos:\n");
 
-        let work_api = WorkApiService::new(config);
+        let work_api = WorkApiService::new(&state.config);
         match work_api.fetch_all_modules(&cpf_val).await {
             Ok(work_data) => {
                 // Extract key enrichment data from JSON

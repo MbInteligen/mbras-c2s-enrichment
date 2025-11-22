@@ -493,6 +493,36 @@ impl EnrichmentStorage {
 
         Ok(())
     }
+
+    /// Lookup CPF from contact (phone or email)
+    pub async fn lookup_cpf_from_contact(
+        &self,
+        phone: Option<&str>,
+        email: Option<&str>,
+    ) -> Result<Option<String>, AppError> {
+        // Normalize phone
+        let normalized_phone = phone.map(|p| p.chars().filter(|c| c.is_ascii_digit()).collect::<String>());
+
+        let result = sqlx::query_scalar(
+            r#"
+            SELECT p.cpf_cnpj
+            FROM core.party_contacts pc
+            JOIN core.parties p ON pc.party_id = p.id
+            WHERE (pc.value = $1 AND pc.contact_type IN ('phone', 'whatsapp'))
+               OR (pc.value = $2 AND pc.contact_type = 'email')
+            AND p.cpf_cnpj IS NOT NULL
+            ORDER BY p.updated_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(normalized_phone)
+        .bind(email)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::DatabaseError)?;
+
+        Ok(result)
+    }
 }
 
 /// Parse Brazilian date format (DD/MM/YYYY) to chrono::NaiveDate

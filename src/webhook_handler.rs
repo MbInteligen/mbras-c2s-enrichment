@@ -38,14 +38,7 @@ pub async fn c2s_webhook(
 
     // 3. Process each event
     for event in events {
-        match process_webhook_event(
-            &state.db,
-            event,
-            &state.config,
-            state.gateway_client.clone(),
-        )
-        .await
-        {
+        match process_webhook_event(&state, event).await {
             Ok(ProcessResult::Processed) => {
                 processed += 1;
             }
@@ -155,10 +148,8 @@ fn parse_timestamp(timestamp_str: &str) -> Result<DateTime<Utc>, AppError> {
 
 /// Process a single webhook event
 async fn process_webhook_event(
-    db: &PgPool,
+    state: &Arc<AppState>,
     event: WebhookEvent,
-    config: &crate::config::Config,
-    gateway_client: Option<crate::gateway_client::C2sGatewayClient>,
 ) -> Result<ProcessResult, AppError> {
     let lead_id = event.id.clone();
 
@@ -178,7 +169,7 @@ async fn process_webhook_event(
     );
 
     // 1. Check if already processed (idempotency)
-    if already_processed(db, &lead_id, &updated_at_ts).await? {
+    if already_processed(&state.db, &lead_id, &updated_at_ts).await? {
         return Ok(ProcessResult::Duplicate);
     }
 
@@ -188,7 +179,7 @@ async fn process_webhook_event(
         .map_err(|e| AppError::InternalError(format!("Failed to serialize event: {}", e)))?;
 
     store_webhook_receipt(
-        db,
+        &state.db,
         &lead_id,
         &updated_at_ts,
         hook_action.as_deref(),
@@ -198,12 +189,10 @@ async fn process_webhook_event(
 
     // 3. Spawn background enrichment job
     spawn_enrichment_job(
-        db.clone(),
+        state.clone(),
         lead_id.clone(),
         updated_at_ts,
         event,
-        config.clone(),
-        gateway_client,
     );
 
     Ok(ProcessResult::Processed)
@@ -266,35 +255,43 @@ async fn store_webhook_receipt(
 /// 5. Store in database
 /// 6. Send enriched message back to C2S
 /// 7. Mark webhook event as 'completed' or 'failed'
+/// Spawn background enrichment job (non-blocking)
+///
+/// This function spawns a tokio task that will:
+/// 1. Mark webhook event as 'processing'
+/// 2. Fetch full lead data from C2S
+/// 3. Extract CPF from customer data
+/// 4. Enrich via Work API
+/// 5. Store in database
+/// 6. Send enriched message back to C2S
+/// 7. Mark webhook event as 'completed' or 'failed'
 fn spawn_enrichment_job(
-    db: PgPool,
+    state: Arc<AppState>,
     lead_id: String,
     updated_at: DateTime<Utc>,
     event: WebhookEvent,
-    config: crate::config::Config,
-    gateway_client: Option<crate::gateway_client::C2sGatewayClient>,
 ) {
     tokio::spawn(async move {
         tracing::info!("Starting background enrichment for lead_id={}", lead_id);
 
         // Update status to processing (with specific updated_at to target correct row)
-        if let Err(e) = mark_webhook_processing(&db, &lead_id, &updated_at).await {
+        if let Err(e) = mark_webhook_processing(&state.db, &lead_id, &updated_at).await {
             tracing::error!("Failed to mark webhook as processing: {}", e);
             return;
         }
 
         // Run full enrichment workflow
-        match enrich_lead_workflow(&db, &lead_id, event, &config, gateway_client.as_ref()).await {
+        match enrich_lead_workflow(&state, &lead_id, event).await {
             Ok(_) => {
                 tracing::info!("Successfully enriched lead_id={}", lead_id);
-                if let Err(e) = mark_webhook_completed(&db, &lead_id, &updated_at).await {
+                if let Err(e) = mark_webhook_completed(&state.db, &lead_id, &updated_at).await {
                     tracing::error!("Failed to mark webhook as completed: {}", e);
                 }
             }
             Err(e) => {
                 tracing::error!("Failed to enrich lead_id={}: {}", lead_id, e);
                 if let Err(e) =
-                    mark_webhook_failed(&db, &lead_id, &updated_at, &e.to_string()).await
+                    mark_webhook_failed(&state.db, &lead_id, &updated_at, &e.to_string()).await
                 {
                     tracing::error!("Failed to mark webhook as failed: {}", e);
                 }
@@ -401,11 +398,9 @@ async fn mark_webhook_failed(
 /// 4. Format and send message to C2S
 /// 5. Store in database
 async fn enrich_lead_workflow(
-    db: &PgPool,
+    state: &Arc<AppState>,
     lead_id: &str,
     event: WebhookEvent,
-    config: &crate::config::Config,
-    gateway_client: Option<&crate::gateway_client::C2sGatewayClient>,
 ) -> Result<(), AppError> {
     tracing::info!("Starting enrichment workflow for lead_id={}", lead_id);
 
@@ -428,13 +423,11 @@ async fn enrich_lead_workflow(
 
     // Run full enrichment workflow using shared module
     let result = crate::enrichment::enrich_and_send_workflow(
+        state.clone(),
         lead_id,
         customer_name,
         phone,
         email,
-        db,
-        config,
-        gateway_client,
     )
     .await?;
 

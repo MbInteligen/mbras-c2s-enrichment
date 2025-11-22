@@ -24,6 +24,9 @@ pub struct AppState {
     pub recent_cpf_cache: Cache<String, i64>,
     /// Lead-level deduplication cache to prevent concurrent processing of same lead_id
     pub processing_leads_cache: Cache<String, i64>,
+    // Cache for contact (phone/email) -> Existing Enrichment Data
+    // Key: phone or email, Value: Option<ExistingEnrichment> (None means checked and not found)
+    pub contact_to_cpf_cache: Cache<String, Option<crate::enrichment::ExistingEnrichment>>,
 }
 
 /// Health check endpoint

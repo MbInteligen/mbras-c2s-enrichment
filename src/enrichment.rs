@@ -10,18 +10,100 @@ use crate::config::Config;
 use crate::db_storage::EnrichmentStorage;
 use crate::errors::AppError;
 use crate::gateway_client::C2sGatewayClient;
+use crate::handlers::AppState;
+use crate::models::WorkApiCompleteResponse;
 use crate::services::{C2SService, DiretrixService, WorkApiService};
 use phonenumber::country::Id as CountryId;
 use phonenumber::Mode;
 use regex::Regex;
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use std::sync::Arc;
+use uuid::Uuid;
 
 /// Result of CPF lookup via Diretrix
 #[derive(Debug)]
 pub struct CpfLookupResult {
     pub cpfs: Vec<String>,
     pub same_person: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExistingEnrichment {
+    pub party_id: Uuid,
+    pub cpf: String,
+    pub enriched_data: Option<serde_json::Value>,
+}
+
+/// Check if we already have enriched data for this phone/email
+pub async fn find_existing_enrichment(
+    state: &Arc<AppState>,
+    phone: Option<&str>,
+    email: Option<&str>,
+) -> Result<Option<ExistingEnrichment>, AppError> {
+    // 1. Check Cache
+    let cache_key = if let Some(p) = phone {
+        format!("phone:{}", p)
+    } else if let Some(e) = email {
+        format!("email:{}", e)
+    } else {
+        return Ok(None);
+    };
+
+    if let Some(cached) = state.contact_to_cpf_cache.get(&cache_key).await {
+        return Ok(cached);
+    }
+
+    // 2. Check Database
+    // Normalize phone
+    let normalized_phone = phone.map(|p| p.chars().filter(|c| c.is_ascii_digit()).collect::<String>());
+    
+    // Search party_contacts -> parties -> party_enrichments
+    // We prioritize enriched parties
+    // Search party_contacts -> parties -> party_enrichments
+    // We prioritize enriched parties
+    let row = sqlx::query(
+        r#"
+        SELECT p.id, p.cpf_cnpj, pe.normalized_data
+        FROM core.party_contacts pc
+        JOIN core.parties p ON pc.party_id = p.id
+        LEFT JOIN core.party_enrichments pe ON pe.party_id = p.id
+        WHERE (pc.value = $1 AND pc.contact_type IN ('phone', 'whatsapp'))
+           OR (pc.value = $2 AND pc.contact_type = 'email')
+        AND p.enriched = true
+        ORDER BY p.updated_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(normalized_phone)
+    .bind(email)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(AppError::DatabaseError)?;
+
+    let enrichment = if let Some(row) = row {
+        use sqlx::Row;
+        let party_id: Uuid = row.try_get("id").unwrap_or_default();
+        let cpf: Option<String> = row.try_get("cpf_cnpj").ok();
+        let enriched_data: Option<serde_json::Value> = row.try_get("normalized_data").ok();
+
+        if let Some(c) = cpf {
+            Some(ExistingEnrichment {
+                party_id,
+                cpf: c,
+                enriched_data,
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // 3. Update Cache
+    state.contact_to_cpf_cache.insert(cache_key, enrichment.clone()).await;
+
+    Ok(enrichment)
 }
 
 /// Validate email address
@@ -342,19 +424,53 @@ pub async fn store_enriched_data(
 /// 4. Send to C2S
 /// 5. Store in database
 pub async fn enrich_and_send_workflow(
+    state: Arc<AppState>,
     lead_id: &str,
     customer_name: &str,
     phone: Option<&str>,
     email: Option<&str>,
-    db: &PgPool,
-    config: &Config,
-    gateway_client: Option<&C2sGatewayClient>,
 ) -> Result<EnrichmentResult, AppError> {
+    let db = &state.db;
+    let config = &state.config;
+    let gateway_client = state.gateway_client.as_ref();
+
     tracing::info!("Starting enrichment workflow for lead_id: {}", lead_id);
+
+    // OPTIMIZATION: Check DB/Cache first
+    if let Ok(Some(existing)) = find_existing_enrichment(&state, phone, email).await {
+        tracing::info!("✅ Found existing enrichment for CPF: {}", existing.cpf);
+        
+        // Try to format message from existing data
+        if let Some(data_value) = existing.enriched_data {
+             if let Ok(work_data) = serde_json::from_value::<WorkApiCompleteResponse>(data_value) {
+                let message_body = format_enriched_message_body(
+                    customer_name,
+                    phone.unwrap_or(""),
+                    email.unwrap_or(""),
+                    &[serde_json::to_value(&work_data).unwrap()],
+                    true, 
+                );
+
+                tracing::info!("Sending cached message to C2S");
+                send_message_to_c2s(lead_id, &message_body, gateway_client, config).await?;
+
+                return Ok(EnrichmentResult {
+                    lead_id: lead_id.to_string(),
+                    cpfs_enriched: vec![existing.cpf],
+                    same_person: true,
+                    message_sent: true,
+                    stored_count: 0,
+                    entity_ids: vec![existing.party_id],
+                });
+             }
+        }
+        tracing::warn!("Found existing enrichment but failed to parse data, falling back to external APIs");
+    }
 
     // Step 1: Find CPF(s) via Diretrix
     tracing::info!("Step 1: Finding CPF via Diretrix");
     let cpf_result = find_cpf_via_diretrix(phone, email, config).await?;
+    
     tracing::info!(
         "Found {} CPF(s), same_person: {}",
         cpf_result.cpfs.len(),
