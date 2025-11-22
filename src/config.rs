@@ -6,7 +6,7 @@ pub struct Config {
     pub port: u16,
     pub c2s_token: String,
     pub c2s_base_url: String,
-    pub webhook_secret: Option<String>,  // Optional webhook secret for C2S webhooks
+    pub webhook_secret: Option<String>, // Optional webhook secret for C2S webhooks
     pub worker_api_key: String,
     pub diretrix_base_url: String,
     pub diretrix_user: String,
@@ -37,10 +37,18 @@ impl Config {
                     }
                     Ok(url)
                 })?,
-            port: std::env::var("PORT")
-                .unwrap_or_else(|_| "3000".to_string())
-                .parse()
-                .map_err(|_| anyhow::anyhow!("PORT must be a valid number between 1-65535"))?,
+            port: {
+                let port: u16 = std::env::var("PORT")
+                    .unwrap_or_else(|_| "3000".to_string())
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("PORT must be a valid number between 1-65535"))?;
+
+                if port == 0 {
+                    anyhow::bail!("PORT must be greater than 0");
+                }
+
+                port
+            },
             c2s_token: std::env::var("C2S_TOKEN")
                 .map_err(|_| anyhow::anyhow!("C2S_TOKEN environment variable required"))
                 .and_then(|token| {
@@ -107,10 +115,18 @@ impl Config {
             c2s_default_seller_id: std::env::var("C2S_DEFAULT_SELLER_ID")
                 .ok()
                 .filter(|s| !s.trim().is_empty()),
-            c2s_description_max_length: std::env::var("C2S_DESCRIPTION_MAX_LENGTH")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(5000), // Default to 5000 chars
+            c2s_description_max_length: {
+                let max_len = std::env::var("C2S_DESCRIPTION_MAX_LENGTH")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(5000); // Default to 5000 chars
+
+                if max_len == 0 {
+                    anyhow::bail!("C2S_DESCRIPTION_MAX_LENGTH must be greater than 0");
+                }
+
+                max_len
+            },
         };
 
         // Log successful configuration load (without sensitive values)
