@@ -381,7 +381,6 @@ impl EnrichmentStorage {
 
         Ok(())
     }
-
 }
 
 /// Parse Brazilian date format (DD/MM/YYYY) to chrono::NaiveDate
