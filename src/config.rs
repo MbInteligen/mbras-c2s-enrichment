@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use url::Url;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -6,7 +7,7 @@ pub struct Config {
     pub port: u16,
     pub c2s_token: String,
     pub c2s_base_url: String,
-    pub webhook_secret: Option<String>,  // Optional webhook secret for C2S webhooks
+    pub webhook_secret: Option<String>, // Optional webhook secret for C2S webhooks
     pub worker_api_key: String,
     pub diretrix_base_url: String,
     pub diretrix_user: String,
@@ -115,10 +116,30 @@ impl Config {
 
         // Log successful configuration load (without sensitive values)
         tracing::info!("Configuration loaded successfully");
-        tracing::debug!(
-            "Database URL: {}...",
-            &config.database_url[..20.min(config.database_url.len())]
-        );
+        // Redact credentials while still logging connection target
+        if let Ok(db_url) = Url::parse(&config.database_url) {
+            let host = db_url.host_str().unwrap_or("unknown");
+            let db_name = db_url.path().trim_start_matches('/');
+            let port = db_url
+                .port_or_known_default()
+                .map(|p| format!(":{}", p))
+                .unwrap_or_default();
+            let path = if db_name.is_empty() {
+                String::new()
+            } else {
+                format!("/{}", db_name)
+            };
+
+            tracing::debug!(
+                "Database URL (redacted): {}://{}{}{}",
+                db_url.scheme(),
+                host,
+                port,
+                path
+            );
+        } else {
+            tracing::debug!("Database URL (redacted): <unparsable>");
+        }
         tracing::debug!("C2S Base URL: {}", config.c2s_base_url);
         if config.webhook_secret.is_some() {
             tracing::info!("Webhook secret configured for C2S webhooks");
