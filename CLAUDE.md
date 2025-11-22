@@ -4,21 +4,32 @@
 
 ---
 
-## ⚠️ CURRENT STATUS (2025-11-21)
+## ✅ CURRENT STATUS (2025-11-21)
 
 **Deployment**: Version 29 (deployed and working)  
 **URL**: https://mbras-c2s.fly.dev  
 
+**STATUS UPDATE (2025-11-21)**:
+1. ✅ **Database Hardening COMPLETED**: Applied migration 001_hardening_constraints.sql
+   - Removed 1,522 duplicate phone records
+   - Added UNIQUE constraint on entity phones
+   - Added CEP/UF validation for Brazilian addresses
+   - Added performance indexes for lead tracking
+2. ✅ **Database Storage RE-ENABLED**: Code uncommented in `handlers.rs` (lines 447-469, 920-945)
+3. ✅ **Schema Verified**: Production database fully compatible with code expectations
+4. ✅ **Ready for Deployment**: Code compiled successfully, ready to deploy
+
 **CRITICAL NOTES**:
 1. ✅ **C2S Message Endpoint VERIFIED**: Use `/integration/leads/{lead_id}/create_message` (NOT `/integration/messages`)
-2. ⚠️ **Database Storage DISABLED**: Code commented out in `handlers.rs` (lines 448-471, 920-945) - needs fixing later
+2. ✅ **Database Storage ENABLED**: Enriched data now persists to database
 3. ✅ **Enrichment Working**: Messages successfully sent to C2S
-4. 🔧 **TODO**: Re-enable and fix database storage code after schema is properly set up
+4. ✅ **Lead Tracking**: Entity metadata includes `c2s_lead_id` for tracking
 
 **Last Working Test**:
 - Lead: Marco Sanches (`f4ed97f09fa9544b713a2f833462e20c`)
 - Result: ✅ Enriched message successfully sent to C2S
-- Response: `{"success": true, "message_sent": true, "stored_in_db": 0}`
+- Response (OLD): `{"success": true, "message_sent": true, "stored_in_db": 0}`
+- Response (NEW): `{"success": true, "message_sent": true, "stored_in_db": N, "entity_ids": [...]}`
 
 ---
 
