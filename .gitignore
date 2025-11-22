@@ -22,8 +22,14 @@ Thumbs.db
 
 # Logs
 *.log
-temp_data/
+
+# Temporary data files
+temp_data/*.json
+temp_data/*.txt
+!temp_data/.gitkeep
 
 # Google Ads credentials (contains secrets)
 google-ads.yaml
 **/google-ads.yaml
+
+# Note: migrations/ should NOT be ignored (contains schema versions)
