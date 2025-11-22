@@ -1,7 +1,7 @@
 # MBRAS C2S Database Schema Report - Production
 
 **Snapshot Date:** 2025-11-22  
-**Database:** PostgreSQL 14+ (Neon.tech)  
+**Database:** PostgreSQL 17.5 (Neon.tech)  
 **Environment:** Production  
 **Repository:** https://github.com/MbInteligen/mbras-c2s-enrichment
 
