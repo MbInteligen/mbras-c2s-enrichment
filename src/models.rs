@@ -32,6 +32,49 @@ pub struct Party {
 pub type Customer = Party;
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct Person {
+    pub party_id: Uuid,
+    pub full_name: String,
+    pub mothers_name: Option<String>,
+    pub birth_date: Option<NaiveDate>,
+    pub sex: Option<String>,
+    pub marital_status: Option<String>,
+    pub document_cpf: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct Company {
+    pub party_id: Uuid,
+    pub legal_name: String,
+    pub trade_name: Option<String>,
+    pub cnpj: Option<String>,
+    pub company_size: Option<String>,
+    pub industry: Option<String>,
+    pub foundation_date: Option<NaiveDate>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct PartyContact {
+    pub contact_id: Uuid,
+    pub party_id: Uuid,
+    pub contact_type: String,
+    pub value: String,
+    pub is_primary: bool,
+    pub is_verified: bool,
+    pub is_whatsapp: bool,
+    pub source: Option<String>,
+    pub confidence: Option<f64>,
+    pub valid_from: Option<DateTime<Utc>>,
+    pub valid_to: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct Email {
     pub id: Uuid,
     pub email: String,
