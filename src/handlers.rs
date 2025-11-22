@@ -445,30 +445,30 @@ pub async fn c2s_enrich_lead(
     tracing::info!("Using C2S Client to send message");
     gateway.send_message(&lead_id, &message_body).await?;
 
-    // Step 6: Store enriched data in database (TEMPORARILY DISABLED)
-    tracing::info!("Step 5: Skipping database storage (temporarily disabled)");
-    // let storage = crate::db_storage::EnrichmentStorage::new(state.db.clone());
-    // let mut stored_entity_ids = Vec::new();
-    // for (idx, cpf) in cpf_list.iter().enumerate() {
-    //     match storage
-    //         .store_enriched_person_with_lead(cpf, &enriched_data[idx], Some(&lead_id))
-    //         .await
-    //     {
-    //         Ok(entity_id) => {
-    //             tracing::info!(
-    //                 "✓ Stored CPF {} → entity_id: {} (lead_id: {})",
-    //                 cpf,
-    //                 entity_id,
-    //                 lead_id
-    //             );
-    //             stored_entity_ids.push(entity_id);
-    //         }
-    //         Err(e) => {
-    //             tracing::error!("✗ Failed to store CPF {}: {}", cpf, e);
-    //             // Don't fail the whole request, just log the error
-    //         }
-    //     }
-    // }
+    // Step 6: Store enriched data in database
+    tracing::info!("Step 5: Storing enriched data in database");
+    let storage = crate::db_storage::EnrichmentStorage::new(state.db.clone());
+    let mut stored_entity_ids = Vec::new();
+    for (idx, cpf) in cpf_list.iter().enumerate() {
+        match storage
+            .store_enriched_person_with_lead(cpf, &enriched_data[idx], Some(&lead_id))
+            .await
+        {
+            Ok(entity_id) => {
+                tracing::info!(
+                    "✓ Stored CPF {} → entity_id: {} (lead_id: {})",
+                    cpf,
+                    entity_id,
+                    lead_id
+                );
+                stored_entity_ids.push(entity_id);
+            }
+            Err(e) => {
+                tracing::error!("✗ Failed to store CPF {}: {}", cpf, e);
+                // Don't fail the whole request, just log the error
+            }
+        }
+    }
 
     Ok(Json(json!({
         "success": true,
@@ -476,8 +476,8 @@ pub async fn c2s_enrich_lead(
         "customer_name": customer.name,
         "enriched": true,
         "message_sent": true,
-        "stored_in_db": 0,
-        "entity_ids": []
+        "stored_in_db": stored_entity_ids.len(),
+        "entity_ids": stored_entity_ids
     })))
 }
 
@@ -918,29 +918,29 @@ pub async fn trigger_lead_processing(
 
     tracing::info!("Formatted message length: {} chars", full_message.len());
 
-    // Step 5: Store enriched data in database (TEMPORARILY DISABLED)
-    tracing::info!("Step 5: Skipping database storage (temporarily disabled)");
-    let stored_entity_ids: Vec<uuid::Uuid> = Vec::new();
+    // Step 5: Store enriched data in database
+    tracing::info!("Step 5: Storing enriched data in database");
+    let mut stored_entity_ids: Vec<uuid::Uuid> = Vec::new();
 
-    // for (idx, cpf) in cpfs_to_process.iter().enumerate() {
-    //     match storage
-    //         .store_enriched_person_with_lead(cpf, &enriched_data[idx], Some(lead_id))
-    //         .await
-    //     {
-    //         Ok(entity_id) => {
-    //             tracing::info!(
-    //                 "✓ Stored CPF {} → entity_id: {} (lead_id: {})",
-    //                 cpf,
-    //                 entity_id,
-    //                 lead_id
-    //             );
-    //             stored_entity_ids.push(entity_id);
-    //         }
-    //         Err(e) => {
-    //             tracing::error!("✗ Failed to store CPF {}: {}", cpf, e);
-    //         }
-    //     }
-    // }
+    for (idx, cpf) in cpfs_to_process.iter().enumerate() {
+        match storage
+            .store_enriched_person_with_lead(cpf, &enriched_data[idx], Some(lead_id))
+            .await
+        {
+            Ok(entity_id) => {
+                tracing::info!(
+                    "✓ Stored CPF {} → entity_id: {} (lead_id: {})",
+                    cpf,
+                    entity_id,
+                    lead_id
+                );
+                stored_entity_ids.push(entity_id);
+            }
+            Err(e) => {
+                tracing::error!("✗ Failed to store CPF {}: {}", cpf, e);
+            }
+        }
+    }
 
     // Step 6: Send enriched data back to C2S
     tracing::info!("Step 6: Sending enriched data to C2S");
