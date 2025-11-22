@@ -699,9 +699,9 @@ SELECT
 
 #### Deployment Status
 
-- **Compilation:** ✅ No errors (only 3 dead code warnings)
+- **Compilation:** ✅ No errors (only unused-code warnings)
 - **Testing:** ✅ Logic validated
 - **Documentation:** ✅ Complete
-- **Production:** ⏳ Ready for deployment
+- **Production:** ✅ Party model live; legacy `entity_*` tables deprecated; contacts unified in `core.party_contacts` (party_emails/party_phones/party_iptus dropped); addresses/financials migrated
 
 ---
