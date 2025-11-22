@@ -51,14 +51,14 @@ sqlx migrate run
 cargo run
 
 # 4. Test
-./docs/scripts/test-local.sh
+./docs/scripts/testing/test-local.sh
 ```
 
 ### Docker Testing
 
 ```bash
 # Full stack test with isolated database
-./docs/scripts/test-docker.sh
+./docs/scripts/testing/test-docker.sh
 ```
 
 ### Deploy to Fly.io
@@ -152,10 +152,10 @@ RUST_LOG=info  # or debug for verbose
 cargo test
 
 # Integration tests
-./docs/scripts/test-local.sh
+./docs/scripts/testing/test-local.sh
 
 # Docker integration
-./docs/scripts/test-docker.sh
+./docs/scripts/testing/test-docker.sh
 
 # Smoke test
 k6 run tests/smoke-test.js
@@ -165,62 +165,70 @@ k6 run tests/load-test.js
 ```
 
 ### Documentation
-- [Complete Testing Guide](docs/TESTING.md)
-- [Performance Monitoring](docs/PERFORMANCE_MONITORING.md)
-- [Make.com Integration](docs/MAKE_INTEGRATION.md)
-- [Deduplication Implementation](docs/DEDUPLICATION_IMPLEMENTATION.md)
-- [Security Checklist](docs/SECURITY_CHECKLIST.md)
-- [Implementation Summary](docs/IMPLEMENTATION_SUMMARY.md)
+- [Documentation Index](docs/README.md) - Complete documentation navigation
+- [Quick Start Guide](docs/QUICKSTART.md)
+- [API Endpoints](docs/API_ENDPOINTS.md)
+- [Database Schema Report](docs/database/DATABASE_SCHEMA_REPORT_FINAL.md)
+- [Architecture Decision Records](docs/adr/)
+- [Testing Guide](docs/testing/TESTING.md)
+- [Make.com Integration](docs/integrations/MAKE_INTEGRATION.md)
+- [Security Checklist](docs/security/SECURITY_CHECKLIST.md)
 
 ## Project Structure
 
 ```
 rust-c2s-api/
-├── src/
-│   ├── main.rs           # Application entry point & routing
-│   ├── config.rs         # Configuration management
-│   ├── db.rs             # Database connection
-│   ├── db_storage.rs     # Enrichment data storage
-│   ├── errors.rs         # Error types & handling
-│   ├── handlers.rs       # HTTP request handlers
-│   ├── models.rs         # Data models
-│   └── services.rs       # External API integrations
-├── tests/
-│   ├── load-test.js      # k6 load testing
-│   └── smoke-test.js     # k6 smoke testing
-├── docs/
-│   ├── API_ENDPOINTS.md        # API reference
-│   ├── DEDUPLICATION_IMPLEMENTATION.md # Caching & deduplication
-│   ├── DEPLOYMENT.md           # Deployment guide
-│   ├── DEPLOYMENT_CHECKLIST.md # Pre-deployment checks
-│   ├── IMPLEMENTATION_SUMMARY.md # Technical overview
-│   ├── MAKE_INTEGRATION.md     # Make.com setup
-│   ├── PERFORMANCE_MONITORING.md # Monitoring & sizing
-│   ├── SECURITY_CHECKLIST.md   # Security requirements
-│   ├── TESTING.md              # Testing guide
-│   ├── queries/                # SQL query examples
-│   ├── schemas/                # Database schemas
-│   └── scripts/                # Helper scripts
-├── schemas/
-│   └── 01_init.sql       # Database schema
-├── Dockerfile            # Container image
+├── src/                  # Source code
+│   ├── main.rs          # Application entry point & routing
+│   ├── config.rs        # Configuration management
+│   ├── db.rs            # Database connection
+│   ├── db_storage.rs    # Enrichment data storage
+│   ├── errors.rs        # Error types & handling
+│   ├── handlers.rs      # HTTP request handlers
+│   ├── models.rs        # Data models
+│   └── services.rs      # External API integrations
+│
+├── docs/                 # All documentation and resources
+│   ├── adr/             # Architecture Decision Records
+│   ├── architecture/    # System design documents
+│   ├── database/        # Database docs + examples
+│   │   └── examples/    # JSON responses + Rust examples
+│   ├── deployment/      # Deployment guides
+│   ├── integrations/    # External API documentation
+│   ├── queries/         # SQL query examples
+│   ├── schemas/         # Database schema files
+│   ├── scripts/         # Utility scripts
+│   │   ├── data/       # Data processing
+│   │   ├── deployment/ # Deployment scripts
+│   │   └── testing/    # Test scripts
+│   ├── security/        # Security documentation
+│   ├── session-notes/   # Development summaries
+│   └── testing/         # Test documentation
+│
+├── tests/               # k6 load/smoke tests
+├── target/              # Rust build artifacts
+├── Dockerfile           # Container image
 ├── fly.toml             # Fly.io configuration
-├── test-local.sh        # Local integration tests
-├── test-docker.sh       # Docker integration tests
-└── docker-compose.test.yml # Docker test environment
+└── docker-compose*.yml  # Docker environments
 ```
 
 ## Database Schema
 
-**Core Tables**:
-- `core.entities` - Person/company records
-- `core.entity_profiles` - Personal details
-- `core.entity_financials` - Financial data
-- `core.entity_emails` - Email contacts
-- `core.entity_phones` - Phone contacts
-- `core.entity_addresses` - Address information
+**PostgreSQL 17.5** (Neon.tech) with **Party Model** architecture:
 
-See [IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md) for details.
+**Core Tables**:
+- `core.parties` - Golden record (1.5M+ records)
+- `core.people` - Person-specific attributes (1.1M+)
+- `core.companies` - Company-specific attributes (412K+)
+- `core.party_contacts` - Unified contacts (email/phone/whatsapp)
+- `core.party_enrichments` - Enrichment tracking
+- `core.real_estate_properties` - Property ownership
+
+**Analytics Layer**:
+- `core.mv_party_analytics` - Base analytics materialized view
+- `analytics.mv_mkt_lead_star` - Marketing star schema
+
+See [DATABASE_SCHEMA_REPORT_FINAL.md](docs/database/DATABASE_SCHEMA_REPORT_FINAL.md) for complete details.
 
 ## Performance
 
@@ -238,7 +246,7 @@ See [IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md) for details.
 - Simple queries: 50+ req/s
 - Full enrichment: 2-5 req/s (limited by external APIs)
 
-See [PERFORMANCE_MONITORING.md](docs/PERFORMANCE_MONITORING.md) for optimization.
+See [PERFORMANCE_MONITORING.md](docs/testing/PERFORMANCE_MONITORING.md) for optimization.
 
 ## Security
 

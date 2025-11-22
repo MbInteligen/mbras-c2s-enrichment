@@ -2,9 +2,19 @@
 
 ## Project Structure & Module Organization
 - Core code in `src/` (`main.rs` bootstraps Axum router; `config.rs` handles env loading; `db.rs`/`db_storage.rs` wrap SQLx; `handlers.rs`/`webhook_handler.rs` expose HTTP endpoints; `services.rs`, `gateway_client.rs`, `google_ads_handler.rs` integrate external APIs; `models.rs`/`google_ads_models.rs`/`webhook_models.rs` define payloads; `enrichment.rs` contains enrichment flow).
-- Database assets live in `migrations/` and `schemas/`; seed or scratch data goes in `temp_data/`.
-- Test and tooling: `tests/` holds k6 scenarios; `scripts/` has curl-based integration helpers (e.g., `test_webhook.sh`, `test_work_api.sh`); root `test-local.sh` and `test-docker.sh` orchestrate common flows.
-- Docs are in `docs/` (API, deployment, performance, security); container assets in `Dockerfile`, `docker-compose*.yml`; Fly.io config in `fly.toml`.
+- All documentation and project resources unified in `docs/`:
+  - `docs/adr/` — Architecture Decision Records
+  - `docs/architecture/` — System design documents
+  - `docs/database/` — Database documentation + schema examples (JSON + Rust examples)
+  - `docs/deployment/` — Deployment guides and checklists
+  - `docs/integrations/` — External API documentation
+  - `docs/queries/` — SQL query examples
+  - `docs/schemas/` — Database schema files
+  - `docs/scripts/` — All utility scripts (data, deployment, testing)
+  - `docs/security/` — Security checklists and guides
+  - `docs/session-notes/` — Development session summaries
+  - `docs/testing/` — Test documentation
+- Test suite in `tests/` (k6 load/smoke tests); container assets in `Dockerfile`, `docker-compose*.yml`; Fly.io config in `fly.toml`.
 
 ## Build, Test, and Development Commands
 - `cargo build` — compile the service; add `--release` for deploy parity.

@@ -63,70 +63,88 @@ rust-c2s-api/
 │   ├── db_storage.rs        # Data persistence logic
 │   └── errors.rs            # Error handling
 │
-├── examples/                 # Rust examples
-│   ├── batch_enrich.rs      # Batch CPF enrichment (direct Work API)
-│   └── import_json_to_db.rs # Import enriched JSON to PostgreSQL
-│
-├── scripts/                  # Bash scripts & utilities
-│   ├── enrich_batch.sh      # Batch enrichment via API endpoint
-│   ├── retry_failed_cpfs.sh # Retry failed enrichments
-│   ├── import_enriched_to_db.sh  # Import via psql
-│   ├── RUN_SERVER.sh        # Start the server locally
-│   ├── TEST_LIVE.sh         # Test live deployment
-│   ├── test-docker.sh       # Test with Docker
-│   ├── test-local.sh        # Test local environment
-│   ├── test_all_modules.sh  # Test all Work API modules
-│   ├── test_concurrent_requests.sh  # Concurrency testing
-│   ├── test_direct_work_api.sh      # Test Work API directly
-│   ├── test_modules.sh      # Test specific modules
-│   └── test_work_api.sh     # Test Work API integration
-│
-├── docs/                     # Documentation
-│   ├── analysis/            # Data analysis and comparisons
-│   │   ├── DATA_COMPARISON.md
-│   │   └── DB_STORAGE_ANALYSIS.md
+├── docs/                     # All documentation and project resources
+│   ├── adr/                 # Architecture Decision Records
+│   │   └── ADR-001-PARTY-MODEL-MIGRATION.md
 │   ├── architecture/        # System architecture and design
 │   │   ├── DEDUPLICATION_IMPLEMENTATION.md
 │   │   ├── IMPLEMENTATION_SUMMARY.md
 │   │   └── PLAN_WEBHOOK_REDIS.md
+│   ├── database/            # Database documentation
+│   │   ├── ADDRESS_CONFIDENCE_SCORING.md
+│   │   ├── ANALYTICS_GUIDE.md
+│   │   ├── DATABASE_ANALYSIS.md
+│   │   ├── DATABASE_HARDENING_COMPLETE.md
+│   │   ├── DATABASE_SCHEMA_REPORT_FINAL.md
+│   │   ├── DB_STORAGE_ANALYSIS_UPDATED.md
+│   │   ├── SCHEMA_MIGRATION_LEAD_ADDRESS.md
+│   │   └── examples/        # Example API responses and Rust code
+│   │       ├── EXAMPLE_CPF_RESPONSE.json
+│   │       ├── WEALTH_ASSESSMENT_EXAMPLE.json
+│   │       ├── batch_enrich.rs
+│   │       └── import_json_to_db.rs
 │   ├── deployment/          # Deployment guides and checklists
 │   │   ├── DEPLOYMENT.md
 │   │   ├── DEPLOYMENT_CHECKLIST.md
-│   │   ├── DEPLOY_NOW.md
 │   │   ├── FLY_DEPLOYMENT.md
-│   │   └── READY_FOR_DEPLOYMENT.md
-│   ├── examples/            # Example API responses and data
-│   │   ├── EXAMPLE_CPF_RESPONSE.json
-│   │   └── WEALTH_ASSESSMENT_EXAMPLE.json
+│   │   └── GOOGLE_ADS_DEPLOYMENT_SUCCESS.md
 │   ├── integrations/        # External API integration docs
+│   │   ├── C2S_MANUAL_WEBHOOK_SETUP.md
+│   │   ├── C2S_WEBHOOK_CONFIGURATION.md
+│   │   ├── ENRICHMENT_INTEGRATION.md
+│   │   ├── GOOGLE_ADS_INTEGRATION.md
+│   │   ├── GOOGLE_ADS_LIMITATION.md
 │   │   ├── MAKE_INTEGRATION.md
 │   │   ├── MODULE_TEST_RESULTS.md
-│   │   ├── TESTING.md
-│   │   ├── TESTING_COMPLETE.md
+│   │   ├── WEBHOOK_DEPLOYMENT_STEPS.md
+│   │   ├── WEBHOOK_IMPLEMENTATION.md
+│   │   ├── WEBHOOK_IMPLEMENTATION_SUMMARY.md
+│   │   ├── WEBHOOK_SUBSCRIPTION_STATUS.md
 │   │   └── WORK_API_RATE_LIMITING.md
-│   ├── performance/         # Performance monitoring and reports
-│   │   ├── MEMORY_USAGE_REPORT.md
-│   │   └── PERFORMANCE_MONITORING.md
 │   ├── queries/             # SQL query examples
-│   │   └── ENRICHMENT_FLOW.md
+│   │   ├── companies.sql
+│   │   ├── customers.sql
+│   │   ├── ENRICHMENT_FLOW.md
+│   │   ├── marketing_analytics.sql
+│   │   └── work_api_enrichment.sql
 │   ├── schemas/             # Database schema files
+│   │   └── 01_init.sql
+│   ├── scripts/             # All utility scripts
+│   │   ├── data/            # Data processing scripts
+│   │   │   ├── enrich_batch.sh
+│   │   │   ├── import_enriched_to_db.sh
+│   │   │   └── retry_failed_cpfs.sh
+│   │   ├── deployment/      # Deployment scripts
+│   │   │   └── RUN_SERVER.sh
+│   │   └── testing/         # Test scripts
+│   │       ├── TEST_LIVE.sh
+│   │       ├── test-docker.sh
+│   │       ├── test-local.sh
+│   │       ├── test_all_modules.sh
+│   │       ├── test_concurrent_requests.sh
+│   │       ├── test_direct_work_api.sh
+│   │       ├── test_google_webhook.sh
+│   │       ├── test_modules.sh
+│   │       ├── test_webhook.sh
+│   │       └── test_work_api.sh
 │   ├── security/            # Security checklists and guides
 │   │   ├── SECURITY_AND_SCHEMA_FIXES.md
 │   │   ├── SECURITY_CHECKLIST.md
-│   │   ├── SECURITY_FIXES.md
 │   │   └── SECURITY_ROTATION_REQUIRED.md
-│   ├── sessions/            # Development session summaries
+│   ├── session-notes/       # Development session summaries
 │   │   ├── FINAL_STATUS.md
-│   │   ├── IMPLEMENTATION_COMPLETE.md
+│   │   ├── IMPLEMENTATION_SUMMARY.md
 │   │   ├── PROJECT_SUMMARY.md
-│   │   ├── QUICKSTART.md
 │   │   └── SESSION_SUMMARY.md
+│   ├── testing/             # Test documentation
+│   │   ├── PERFORMANCE_MONITORING.md
+│   │   └── TESTING.md
 │   ├── API_ENDPOINTS.md     # API endpoint documentation
+│   ├── QUICKSTART.md        # Quick start guide
 │   └── README.md            # Documentation index
 │
-├── tests/                    # Integration tests (JS)
-├── temp_data/               # Temporary files (gitignored)
-├── migrations/              # (planned) SQL migrations
+├── tests/                    # Integration tests (k6)
+├── target/                   # Rust build artifacts (gitignored)
 │
 ├── Cargo.toml               # Rust dependencies
 ├── Dockerfile               # Multi-stage Docker build (nightly Rust)
