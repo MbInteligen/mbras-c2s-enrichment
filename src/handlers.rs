@@ -79,30 +79,40 @@ pub async fn get_customer_by_id(
     tracing::info!("GET /customers/{}", id);
 
     let customer = sqlx::query_as::<_, Customer>(
-        "SELECT * FROM core.parties WHERE id = $1 AND party_type = 'customer'",
+        "SELECT * FROM core.parties WHERE id = $1 AND party_type = 'person'",
     )
     .bind(id)
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| AppError::NotFound(format!("Customer with id {} not found", id)))?;
 
-    let emails = sqlx::query_as::<_, Email>(
-        "SELECT e.* FROM app.emails e
-         INNER JOIN core.party_emails pe ON e.id = pe.email_id
-         WHERE pe.party_id = $1",
+    let contacts = sqlx::query_as::<_, crate::models::PartyContact>(
+        "SELECT * FROM core.party_contacts WHERE party_id = $1 ORDER BY is_primary DESC, created_at ASC",
     )
     .bind(id)
     .fetch_all(&state.db)
     .await?;
 
-    let phones = sqlx::query_as::<_, Phone>(
-        "SELECT ph.* FROM app.phones ph
-         INNER JOIN core.party_phones pp ON ph.id = pp.phone_id
-         WHERE pp.party_id = $1",
-    )
-    .bind(id)
-    .fetch_all(&state.db)
-    .await?;
+    let emails: Vec<Email> = contacts
+        .iter()
+        .filter(|c| c.contact_type == "email")
+        .map(|c| Email {
+            id: c.contact_id,
+            email: c.value.clone(),
+            created_at: c.created_at,
+        })
+        .collect();
+
+    let phones: Vec<Phone> = contacts
+        .iter()
+        .filter(|c| c.contact_type == "phone" || c.contact_type == "whatsapp")
+        .map(|c| Phone {
+            id: c.contact_id,
+            number: c.value.clone(),
+            country_code: None,
+            created_at: c.created_at,
+        })
+        .collect();
 
     Ok(Json(EnrichedCustomerData {
         customer,

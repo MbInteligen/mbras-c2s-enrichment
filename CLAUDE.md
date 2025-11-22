@@ -518,34 +518,17 @@ cargo run --example import_json_to_db            # Import to DB
 
 The database now uses the following structure:
 
-**Core Tables:**
-- `core.entities` - People/companies (uses UUID, not separate customers/parties)
-  - `entity_id` (UUID, PK)
-  - `national_id` (CPF/CNPJ)
-  - `name`, `canonical_name`
-  - `metadata` (JSONB) - Stores `c2s_lead_id` for tracking
-  - `is_enriched`, `enriched_at`
-
-- `core.addresses` - All addresses
-  - `id` (UUID, PK)
-  - `street`, `number`, `neighborhood`, `city`, `state`, `zip_code`
-  - `formatted_address`
-  - `primary_address`, `is_valid`
-
-- `core.entity_addresses` - N:N relationship
-  - `entity_id` → `core.entities`
-  - `address_id` → `core.addresses`
-  - `address_type` ('residential', 'family_member', etc)
-  - `is_primary`, `is_current`
-  - `confidence_score` (0.0-1.0) ← **NEW!**
-  - `verified` (boolean)
-  - `metadata` (JSONB) - Tracks relationship, owner_name, etc
+**Core Tables (party model):**
+- `core.parties` - People/companies (UUID PK `id`, `party_type` text, `cpf_cnpj`, `full_name`, `normalized_name`, enriched flag, birth/company fields)
+- `core.people` / `core.companies` - Person/Company extensions keyed by `party_id`
+- `core.party_contacts` - Unified contacts (email/phone/whatsapp) with unique `(party_id, contact_type, value)`; normalized phone digits
+- `core.party_enrichments` - Enrichment snapshots per party (raw_payload JSONB, quality_score)
+- Legacy `core.entities`/`entity_emails`/`entity_phones` remain but are deprecated.
 
 **Key Changes:**
-- Fixed: `app.addresses` → `core.addresses`
-- Fixed: Return type `i32` → `Uuid`
-- Added: Lead tracking via `metadata->>'c2s_lead_id'`
-- Added: Address confidence scoring system
+- Storage writes to party tables (parties/people/party_contacts/party_enrichments).
+- Lookups and handlers read from party model; no `app.*` joins.
+- Lead tracking kept in enrichment payloads; address storage deferred (remains in payload for now).
 
 #### Address Confidence Scoring System
 
@@ -600,7 +583,7 @@ storage.store_enriched_person_with_lead(cpf, work_data, Some(&lead_id)).await
 
 #### Useful Queries
 
-**Find high-confidence addresses in noble neighborhoods:**
+**Find high-confidence addresses in noble neighborhoods (legacy entities; party addresses TBD):**
 ```sql
 SELECT 
     e.name,
@@ -627,7 +610,7 @@ ORDER BY ea.confidence_score DESC;
 
 **Find entity by C2S lead_id:**
 ```sql
-SELECT * FROM core.entities 
+SELECT * FROM core.parties 
 WHERE metadata->>'c2s_lead_id' = 'bf1a88eaa4ab34b01a257536563fb42b';
 ```
 
@@ -655,15 +638,19 @@ ORDER BY ea.confidence_score DESC;
 
 #### Key Files Modified
 
-- `src/db_storage.rs` (lines 22-35, 154-210, 428-600)
-  - Added `store_enriched_person_with_lead()` method
-  - Implemented address confidence scoring
-  - Fixed `app.addresses` → `core.addresses`
-  - Added metadata tracking for leads and addresses
+- `src/db_storage.rs`
+  - Upserts into `core.parties`/`core.people`
+  - Stores contacts in `core.party_contacts` (normalized/deduped)
+  - Stores enrichment payloads in `core.party_enrichments`
+  - Address persistence deferred (kept in payload for now)
 
-- `src/handlers.rs` (lines 440, 898)
-  - Updated to use `store_enriched_person_with_lead()`
-  - Pass lead_id to storage layer
+- `src/services.rs`
+  - Lookups by CPF/email/phone/name use `core.parties` + `core.party_contacts`
+  - Contact getters map party contacts to legacy response shapes
+
+- `src/handlers.rs`
+  - `get_customer_by_id` pulls contacts from `core.party_contacts`
+  - Enrich flows already call storage with `store_enriched_person_with_lead`
 
 #### Important Notes
 
@@ -676,25 +663,19 @@ ORDER BY ea.confidence_score DESC;
 #### Testing
 
 ```bash
-# Compile
+# Compile/Test
 cargo check
-cargo build
+cargo test
 
-# Test enrichment
-curl -X POST https://mbras-c2s.fly.dev/api/v1/c2s/enrich/LEAD_ID
-
-# Verify in database
+# Verify party backfill (already applied)
 psql $DB_URL -c "
 SELECT 
-    e.name,
-    a.neighborhood,
-    ea.confidence_score,
-    ea.metadata->>'relationship'
-FROM core.entities e
-JOIN core.entity_addresses ea ON e.entity_id = ea.entity_id
-JOIN core.addresses a ON ea.address_id = a.id
-WHERE e.metadata->>'c2s_lead_id' = 'LEAD_ID'
-ORDER BY ea.confidence_score DESC
+  (SELECT COUNT(*) FROM core.parties) parties,
+  (SELECT COUNT(*) FROM core.people) people,
+  (SELECT COUNT(*) FROM core.companies) companies,
+  (SELECT COUNT(*) FROM core.party_contacts WHERE contact_type='email') emails,
+  (SELECT COUNT(*) FROM core.party_contacts WHERE contact_type IN ('phone','whatsapp')) phones,
+  (SELECT COUNT(*) FROM core.party_enrichments) enrichments;
 "
 ```
 
@@ -706,4 +687,3 @@ ORDER BY ea.confidence_score DESC
 - **Production:** ⏳ Ready for deployment
 
 ---
-

@@ -138,7 +138,7 @@ impl CustomerService {
 
     async fn find_by_cpf(&self, cpf: &str) -> Result<Option<Customer>, AppError> {
         let customer = sqlx::query_as::<_, Customer>(
-            "SELECT * FROM core.entities WHERE national_id = $1 AND entity_type = 'person'::core.entity_type_enum LIMIT 1",
+            "SELECT * FROM core.parties WHERE cpf_cnpj = $1 AND party_type = 'person' LIMIT 1",
         )
         .bind(cpf)
         .fetch_optional(&self.pool)
@@ -149,11 +149,13 @@ impl CustomerService {
 
     async fn find_by_email(&self, email: &str) -> Result<Option<Customer>, AppError> {
         let result = sqlx::query_as::<_, Customer>(
-            "SELECT e.* FROM core.entities e
-             INNER JOIN core.entity_emails ee ON e.entity_id = ee.entity_id
-             WHERE ee.email = $1 AND e.entity_type = 'person'::core.entity_type_enum LIMIT 1",
+            "SELECT p.* FROM core.parties p
+             INNER JOIN core.party_contacts pc ON p.id = pc.party_id
+             WHERE pc.contact_type = 'email'::core.contact_type_enum AND pc.value = $1
+               AND p.party_type = 'person'
+             LIMIT 1",
         )
-        .bind(email)
+        .bind(email.to_lowercase())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -161,12 +163,17 @@ impl CustomerService {
     }
 
     async fn find_by_phone(&self, phone: &str) -> Result<Option<Customer>, AppError> {
+        // Normalize to digits for matching stored values
+        let normalized: String = phone.chars().filter(|c| c.is_ascii_digit()).collect();
         let result = sqlx::query_as::<_, Customer>(
-            "SELECT e.* FROM core.entities e
-             INNER JOIN core.entity_phones ep ON e.entity_id = ep.entity_id
-             WHERE ep.phone = $1 AND e.entity_type = 'person'::core.entity_type_enum LIMIT 1",
+            "SELECT p.* FROM core.parties p
+             INNER JOIN core.party_contacts pc ON p.id = pc.party_id
+             WHERE pc.contact_type IN ('phone'::core.contact_type_enum, 'whatsapp'::core.contact_type_enum)
+               AND pc.value = $1
+               AND p.party_type = 'person'
+             LIMIT 1",
         )
-        .bind(phone)
+        .bind(&normalized)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -175,8 +182,8 @@ impl CustomerService {
 
     async fn find_by_name(&self, name: &str) -> Result<Option<Customer>, AppError> {
         let result = sqlx::query_as::<_, Customer>(
-            "SELECT * FROM core.entities
-             WHERE LOWER(name) LIKE LOWER($1) AND entity_type = 'person'::core.entity_type_enum
+            "SELECT * FROM core.parties
+             WHERE LOWER(full_name) LIKE LOWER($1) AND party_type = 'person'
              LIMIT 1",
         )
         .bind(format!("%{}%", name))
@@ -191,11 +198,25 @@ impl CustomerService {
         &self,
         customer_id: &uuid::Uuid,
     ) -> Result<Vec<Email>, AppError> {
-        let emails =
-            sqlx::query_as::<_, Email>("SELECT * FROM core.entity_emails WHERE entity_id = $1")
-                .bind(customer_id)
-                .fetch_all(&self.pool)
-                .await?;
+        let contacts = sqlx::query_as::<_, PartyContact>(
+            r#"
+            SELECT * FROM core.party_contacts
+            WHERE party_id = $1 AND contact_type = 'email'::core.contact_type_enum
+            ORDER BY is_primary DESC, created_at ASC
+            "#,
+        )
+        .bind(customer_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let emails = contacts
+            .into_iter()
+            .map(|pc| Email {
+                id: pc.contact_id,
+                email: pc.value,
+                created_at: pc.created_at,
+            })
+            .collect();
 
         Ok(emails)
     }
@@ -205,11 +226,26 @@ impl CustomerService {
         &self,
         customer_id: &uuid::Uuid,
     ) -> Result<Vec<Phone>, AppError> {
-        let phones =
-            sqlx::query_as::<_, Phone>("SELECT * FROM core.entity_phones WHERE entity_id = $1")
-                .bind(customer_id)
-                .fetch_all(&self.pool)
-                .await?;
+        let contacts = sqlx::query_as::<_, PartyContact>(
+            r#"
+            SELECT * FROM core.party_contacts
+            WHERE party_id = $1 AND contact_type IN ('phone'::core.contact_type_enum, 'whatsapp'::core.contact_type_enum)
+            ORDER BY is_primary DESC, created_at ASC
+            "#,
+        )
+        .bind(customer_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let phones = contacts
+            .into_iter()
+            .map(|pc| Phone {
+                id: pc.contact_id,
+                number: pc.value,
+                country_code: None,
+                created_at: pc.created_at,
+            })
+            .collect();
 
         Ok(phones)
     }
