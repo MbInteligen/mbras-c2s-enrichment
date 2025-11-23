@@ -14,6 +14,7 @@ pub struct C2sGatewayClient {
 }
 
 impl C2sGatewayClient {
+    #[allow(dead_code)]
     pub fn new(base_url: String, token: String) -> Result<Self, AppError> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
@@ -62,6 +63,7 @@ impl C2sGatewayClient {
     }
 
     /// Create new lead in C2S
+    #[allow(dead_code)]
     pub async fn create_lead(
         &self,
         customer_name: &str,

@@ -643,6 +643,7 @@ impl C2SService {
     }
 
     /// Fetch lead data from C2S by lead ID
+    #[allow(dead_code)]
     pub async fn fetch_lead(&self, lead_id: &str) -> Result<C2SLeadResponse, AppError> {
         let url = format!("{}/integration/leads/{}", self.base_url, lead_id);
 
@@ -982,6 +983,7 @@ impl DiretrixService {
     }
 
     /// Get full person data by CPF
+    #[allow(dead_code)]
     pub async fn get_person_by_cpf(&self, cpf: &str) -> Result<DiretrixPersonData, AppError> {
         let url = format!("{}/Consultas/Pessoa/{}", self.base_url, cpf);
 
@@ -1021,6 +1023,7 @@ impl DiretrixService {
     }
 
     /// Enrich person data - search by phone/email, then get full data by CPF
+    #[allow(dead_code)]
     pub async fn enrich_person(
         &self,
         phone: Option<&str>,

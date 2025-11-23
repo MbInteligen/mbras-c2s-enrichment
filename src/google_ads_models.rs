@@ -88,6 +88,7 @@ impl GoogleAdsWebhookPayload {
     }
 
     /// Extract city from form data
+    #[allow(dead_code)]
     pub fn get_city(&self) -> Option<String> {
         self.user_column_data
             .iter()
@@ -98,6 +99,7 @@ impl GoogleAdsWebhookPayload {
     }
 
     /// Extract custom field by column_id
+    #[allow(dead_code)]
     pub fn get_field(&self, column_id: &str) -> Option<String> {
         self.user_column_data
             .iter()

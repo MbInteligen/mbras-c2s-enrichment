@@ -18,6 +18,7 @@ impl EnrichmentStorage {
 
     /// Store or update enriched person data from Work API
     /// Uses sequential queries instead of complex CTEs for better sqlx compatibility
+    #[allow(dead_code)]
     pub async fn store_enriched_person(
         &self,
         cpf: &str,
@@ -495,6 +496,7 @@ impl EnrichmentStorage {
     }
 
     /// Lookup CPF from contact (phone or email)
+    #[allow(dead_code)]
     pub async fn lookup_cpf_from_contact(
         &self,
         phone: Option<&str>,

@@ -134,6 +134,7 @@ pub struct IdempotencyKey {
 }
 
 impl IdempotencyKey {
+    #[allow(dead_code)]
     pub fn new(lead_id: String, updated_at: String) -> Self {
         Self {
             lead_id,
@@ -141,6 +142,7 @@ impl IdempotencyKey {
         }
     }
 
+    #[allow(dead_code)]
     pub fn to_string(&self) -> String {
         format!("{}:{}", self.lead_id, self.updated_at)
     }

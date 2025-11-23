@@ -528,15 +528,20 @@ pub async fn enrich_and_send_workflow(
 /// Result of enrichment workflow
 #[derive(Debug)]
 pub struct EnrichmentResult {
+    #[allow(dead_code)]
     pub lead_id: String,
     pub cpfs_enriched: Vec<String>,
+    #[allow(dead_code)]
     pub same_person: bool,
+    #[allow(dead_code)]
     pub message_sent: bool,
     pub stored_count: usize,
+    #[allow(dead_code)]
     pub entity_ids: Vec<uuid::Uuid>,
 }
 
 impl EnrichmentResult {
+    #[allow(dead_code)]
     pub fn to_json(&self) -> Value {
         json!({
             "success": true,

@@ -17,6 +17,7 @@ struct LegacyEntity {
 struct LegacyProfile {
     sex: Option<String>,
     birth_date: Option<chrono::NaiveDate>,
+    #[allow(dead_code)]
     mother_name: Option<String>, // Note: Schema inspection didn't show mother_name in entity_profiles, checking if it exists or if we need to skip
 }
 

@@ -146,6 +146,7 @@ pub struct LookupPersonalInfo {
     pub name: String,
     pub birth_date: Option<String>,
     pub gender: Option<String>,
+    #[allow(dead_code)]
     pub mother_name: Option<String>,
     pub father_name: Option<String>,
     pub marital_status: Option<String>,
