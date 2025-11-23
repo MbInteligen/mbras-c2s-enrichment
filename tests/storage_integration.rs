@@ -9,12 +9,14 @@ use rust_c2s_api::models::WorkApiCompleteResponse;
 /// Marked ignored to avoid running against production by accident; set TEST_DATABASE_URL to run.
 #[tokio::test]
 #[ignore]
-async fn store_enriched_person_smoke_test() -> Result<(), Box<dyn std::error::Error>> {
+async fn store_enriched_person_smoke_test() -> anyhow::Result<()> {
     let db_url = env::var("TEST_DATABASE_URL")
         .or_else(|_| env::var("DATABASE_URL"))
-        .map_err(|_| "Set TEST_DATABASE_URL or DATABASE_URL to run this test")?;
+        .map_err(|_| anyhow::anyhow!("Set TEST_DATABASE_URL or DATABASE_URL to run this test"))?;
 
-    let db = Database::new(&db_url).await?;
+    let db = Database::new(&db_url)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
     let storage = EnrichmentStorage::new(db.pool.clone());
 
     // Minimal Work API payload; storage is resilient to missing optional fields.
@@ -32,7 +34,8 @@ async fn store_enriched_person_smoke_test() -> Result<(), Box<dyn std::error::Er
 
     let party_id = storage
         .store_enriched_person_with_lead(&cpf, &payload, Some("test-lead-id"))
-        .await?;
+        .await
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
     assert_ne!(party_id, Uuid::nil());
     Ok(())
