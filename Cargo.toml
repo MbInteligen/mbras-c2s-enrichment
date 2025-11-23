@@ -7,7 +7,9 @@ edition = "2021"
 # Web framework
 axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.5", features = ["trace", "cors"] }
+tower-http = { version = "0.5", features = ["trace", "cors", "limit"] }
+tower = { version = "0.4", features = ["limit", "timeout"] }
+tower_governor = "0.4"
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "bigdecimal"] }
@@ -41,6 +43,11 @@ regex = "1"
 
 # Caching
 moka = { version = "0.12", features = ["future"] }
+
+# Security & Resilience
+sha2 = "0.10"
+hex = "0.4"
+failsafe = "1.3"
 
 # Phone number validation (Brazilian numbers)
 phonenumber = "0.3"

@@ -155,14 +155,27 @@ pub async fn fetch_all_modules(
 
     let cache_key = format!("all:{}", documento);
 
-    // Check cache first
+    // Check cache first with validation
     if let Some(cached) = state.work_api_cache.get(&cache_key).await {
-        if let Ok(result) = serde_json::from_str::<crate::models::WorkApiCompleteResponse>(&cached)
+        // Validate cache integrity
+        if let Some(valid_data) =
+            crate::cache_validator::ValidatedCacheEntry::deserialize_and_validate(&cached)
         {
-            tracing::debug!("Work API cache HIT for all modules: {}", documento);
-            return Ok(Json(result));
+            if let Ok(result) =
+                serde_json::from_str::<crate::models::WorkApiCompleteResponse>(&valid_data)
+            {
+                tracing::debug!(
+                    "Work API cache HIT (validated) for all modules: {}",
+                    documento
+                );
+                return Ok(Json(result));
+            }
+        } else {
+            tracing::warn!(
+                "Cache validation failed for {}, refetching from Work API",
+                documento
+            );
         }
-        tracing::warn!("Failed to deserialize cached Work API response");
     }
 
     tracing::info!(
@@ -172,9 +185,13 @@ pub async fn fetch_all_modules(
     let work_api = crate::services::WorkApiService::new(&state.config);
     let result = work_api.fetch_all_modules(documento).await?;
 
-    // Cache successful response
+    // Cache successful response with checksum validation
     if let Ok(json_str) = serde_json::to_string(&result) {
-        state.work_api_cache.insert(cache_key, json_str).await;
+        let validated_entry = crate::cache_validator::ValidatedCacheEntry::new(json_str);
+        state
+            .work_api_cache
+            .insert(cache_key, validated_entry.serialize())
+            .await;
     }
 
     Ok(Json(result))
@@ -194,13 +211,26 @@ pub async fn fetch_module(
 
     let cache_key = format!("module:{}:{}", module, documento);
 
-    // Check cache first
+    // Check cache first with validation
     if let Some(cached) = state.work_api_cache.get(&cache_key).await {
-        if let Ok(result) = serde_json::from_str::<serde_json::Value>(&cached) {
-            tracing::debug!("Work API cache HIT for module '{}': {}", module, documento);
-            return Ok(Json(result));
+        // Validate cache integrity
+        if let Some(valid_data) =
+            crate::cache_validator::ValidatedCacheEntry::deserialize_and_validate(&cached)
+        {
+            if let Ok(result) = serde_json::from_str::<serde_json::Value>(&valid_data) {
+                tracing::debug!(
+                    "Work API cache HIT (validated) for module '{}': {}",
+                    module,
+                    documento
+                );
+                return Ok(Json(result));
+            }
+        } else {
+            tracing::warn!(
+                "Cache validation failed for module '{}', refetching from Work API",
+                module
+            );
         }
-        tracing::warn!("Failed to deserialize cached Work API module response");
     }
 
     tracing::info!(
@@ -213,9 +243,13 @@ pub async fn fetch_module(
 
     let response = result.unwrap_or(serde_json::json!({"error": "No data"}));
 
-    // Cache successful response
+    // Cache successful response with checksum validation
     if let Ok(json_str) = serde_json::to_string(&response) {
-        state.work_api_cache.insert(cache_key, json_str).await;
+        let validated_entry = crate::cache_validator::ValidatedCacheEntry::new(json_str);
+        state
+            .work_api_cache
+            .insert(cache_key, validated_entry.serialize())
+            .await;
     }
 
     Ok(Json(response))

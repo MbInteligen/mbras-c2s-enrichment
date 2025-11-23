@@ -5,6 +5,8 @@ pub mod integrations;
 pub mod obs;
 
 // Re-export primary modules for shared use in tests and other binaries
+pub mod cache_validator;
+pub mod circuit_breaker;
 pub mod config;
 pub mod db;
 pub mod db_storage;

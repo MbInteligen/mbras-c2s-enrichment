@@ -1,3 +1,5 @@
+mod cache_validator;
+mod circuit_breaker;
 mod config;
 mod db;
 mod db_storage;
@@ -19,8 +21,13 @@ use axum::{
     Router,
 };
 use moka::future::Cache;
+use std::sync::Arc;
 use std::time::Duration;
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower::ServiceBuilder;
+use tower_governor::{
+    governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor, GovernorLayer,
+};
+use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::Config;
@@ -162,7 +169,17 @@ async fn main() -> anyhow::Result<()> {
         work_api_cache,
     });
 
-    // Build router
+    // Configure rate limiter: 10 requests/second per IP, burst of 20
+    let governor_conf = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(10)
+            .burst_size(20)
+            .key_extractor(SmartIpKeyExtractor)
+            .finish()
+            .unwrap(),
+    );
+
+    // Build router with security layers
     let app = Router::new()
         .route("/health", get(handlers::health))
         // API Documentation
@@ -193,6 +210,15 @@ async fn main() -> anyhow::Result<()> {
             post(google_ads_handler::google_ads_webhook_handler),
         )
         .with_state(app_state)
+        .layer(
+            ServiceBuilder::new()
+                // Request size limit: 5MB max payload (prevents memory exhaustion)
+                .layer(RequestBodyLimitLayer::new(5 * 1024 * 1024))
+                // Rate limiting: 10 req/sec per IP, burst of 20 (prevents DDoS)
+                .layer(GovernorLayer {
+                    config: governor_conf,
+                }),
+        )
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
 
