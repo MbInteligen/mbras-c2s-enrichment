@@ -29,16 +29,28 @@ impl WorkApiService {
     ) -> Result<WorkApiCompleteResponse, AppError> {
         // Using modulo=cpf returns all data at root level (DadosBasicos, DadosEconomicos, etc.)
         // Using multiple modules returns a different structure with only status/reason
-        let url = format!(
-            "{}/api?token={}&modulo=cpf&consulta={}",
-            self.base_url, self.api_token, documento
-        );
+
+        // Build URL with proper parameter encoding to prevent injection attacks
+        let url = reqwest::Url::parse_with_params(
+            &format!("{}/api", self.base_url),
+            &[
+                ("token", self.api_token.as_str()),
+                ("modulo", "cpf"),
+                ("consulta", documento),
+            ],
+        )
+        .map_err(|e| AppError::ExternalApiError(format!("Failed to build URL: {}", e)))?;
 
         tracing::info!("Fetching all Work API modules for document: {}", documento);
-        tracing::debug!("Work API URL: {}", url);
+        // Redact token from logs to prevent credential exposure
+        tracing::debug!(
+            "Work API URL: {}?token=[REDACTED]&modulo=cpf&consulta={}",
+            self.base_url,
+            documento
+        );
 
         let response =
-            self.client.get(&url).send().await.map_err(|e| {
+            self.client.get(url).send().await.map_err(|e| {
                 AppError::ExternalApiError(format!("Work API request failed: {}", e))
             })?;
 
@@ -69,15 +81,21 @@ impl WorkApiService {
         module: &str,
         consulta: &str,
     ) -> Result<Option<Value>, AppError> {
-        let url = format!(
-            "{}/api?token={}&modulo={}&consulta={}",
-            self.base_url, self.api_token, module, consulta
-        );
+        // Build URL with proper parameter encoding to prevent injection attacks
+        let url = reqwest::Url::parse_with_params(
+            &format!("{}/api", self.base_url),
+            &[
+                ("token", self.api_token.as_str()),
+                ("modulo", module),
+                ("consulta", consulta),
+            ],
+        )
+        .map_err(|e| AppError::ExternalApiError(format!("Failed to build URL: {}", e)))?;
 
         tracing::info!("Fetching Work API module '{}' for: {}", module, consulta);
 
         let response =
-            self.client.get(&url).send().await.map_err(|e| {
+            self.client.get(url).send().await.map_err(|e| {
                 AppError::ExternalApiError(format!("Work API request failed: {}", e))
             })?;
 
