@@ -149,15 +149,21 @@ impl CustomerService {
 
     async fn find_by_email(&self, email: &str) -> Result<Option<Customer>, AppError> {
         let result = sqlx::query_as::<_, Customer>(
-            "SELECT p.* FROM core.parties p
-             INNER JOIN core.party_contacts pc ON p.id = pc.party_id
-             WHERE pc.contact_type = 'email'::core.contact_type_enum AND pc.value = $1
-               AND p.party_type = 'person'
+            "SELECT * FROM core.parties p
+             WHERE p.party_type = 'person'
+               AND p.id IN (
+                 SELECT pc.party_id FROM core.party_contacts pc
+                 WHERE pc.contact_type::text = 'email' AND pc.value = $1
+               )
              LIMIT 1",
         )
         .bind(email.to_lowercase())
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error in find_by_email for '{}': {:?}", email, e);
+            AppError::DatabaseError(e)
+        })?;
 
         Ok(result)
     }
@@ -168,7 +174,7 @@ impl CustomerService {
         let result = sqlx::query_as::<_, Customer>(
             "SELECT p.* FROM core.parties p
              INNER JOIN core.party_contacts pc ON p.id = pc.party_id
-             WHERE pc.contact_type IN ('phone'::core.contact_type_enum, 'whatsapp'::core.contact_type_enum)
+             WHERE pc.contact_type IN ('phone', 'whatsapp')
                AND pc.value = $1
                AND p.party_type = 'person'
              LIMIT 1",
@@ -200,8 +206,12 @@ impl CustomerService {
     ) -> Result<Vec<Email>, AppError> {
         let contacts = sqlx::query_as::<_, PartyContact>(
             r#"
-            SELECT * FROM core.party_contacts
-            WHERE party_id = $1 AND contact_type = 'email'::core.contact_type_enum
+            SELECT
+                contact_id, party_id, contact_type::text as contact_type,
+                value, is_primary, is_verified, is_whatsapp,
+                source, confidence::float8, valid_from, valid_to, created_at, updated_at
+            FROM core.party_contacts
+            WHERE party_id = $1 AND contact_type = 'email'
             ORDER BY is_primary DESC, created_at ASC
             "#,
         )
@@ -228,8 +238,12 @@ impl CustomerService {
     ) -> Result<Vec<Phone>, AppError> {
         let contacts = sqlx::query_as::<_, PartyContact>(
             r#"
-            SELECT * FROM core.party_contacts
-            WHERE party_id = $1 AND contact_type IN ('phone'::core.contact_type_enum, 'whatsapp'::core.contact_type_enum)
+            SELECT
+                contact_id, party_id, contact_type::text as contact_type,
+                value, is_primary, is_verified, is_whatsapp,
+                source, confidence::float8, valid_from, valid_to, created_at, updated_at
+            FROM core.party_contacts
+            WHERE party_id = $1 AND contact_type IN ('phone', 'whatsapp')
             ORDER BY is_primary DESC, created_at ASC
             "#,
         )
