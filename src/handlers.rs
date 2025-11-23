@@ -27,6 +27,9 @@ pub struct AppState {
     // Cache for contact (phone/email) -> Existing Enrichment Data
     // Key: phone or email, Value: Option<ExistingEnrichment> (None means checked and not found)
     pub contact_to_cpf_cache: Cache<String, Option<crate::enrichment::ExistingEnrichment>>,
+    /// Work API response cache (1 hour TTL) to reduce external API calls
+    // Key: "all:{cpf}" or "module:{module}:{cpf}" or "cep:{cep}", Value: JSON response string
+    pub work_api_cache: Cache<String, String>,
 }
 
 /// Health check endpoint
@@ -150,10 +153,29 @@ pub async fn fetch_all_modules(
         .and_then(|v| v.as_str())
         .ok_or_else(|| AppError::BadRequest("Missing 'documento' parameter".to_string()))?;
 
-    tracing::info!("Fetching all Work API modules for: {}", documento);
+    let cache_key = format!("all:{}", documento);
 
+    // Check cache first
+    if let Some(cached) = state.work_api_cache.get(&cache_key).await {
+        if let Ok(result) = serde_json::from_str::<crate::models::WorkApiCompleteResponse>(&cached)
+        {
+            tracing::debug!("Work API cache HIT for all modules: {}", documento);
+            return Ok(Json(result));
+        }
+        tracing::warn!("Failed to deserialize cached Work API response");
+    }
+
+    tracing::info!(
+        "Work API cache MISS - Fetching all modules for: {}",
+        documento
+    );
     let work_api = crate::services::WorkApiService::new(&state.config);
     let result = work_api.fetch_all_modules(documento).await?;
+
+    // Cache successful response
+    if let Ok(json_str) = serde_json::to_string(&result) {
+        state.work_api_cache.insert(cache_key, json_str).await;
+    }
 
     Ok(Json(result))
 }
@@ -170,14 +192,33 @@ pub async fn fetch_module(
         .and_then(|v| v.as_str())
         .ok_or_else(|| AppError::BadRequest("Missing 'documento' parameter".to_string()))?;
 
-    tracing::info!("Fetching Work API module '{}' for: {}", module, documento);
+    let cache_key = format!("module:{}:{}", module, documento);
 
+    // Check cache first
+    if let Some(cached) = state.work_api_cache.get(&cache_key).await {
+        if let Ok(result) = serde_json::from_str::<serde_json::Value>(&cached) {
+            tracing::debug!("Work API cache HIT for module '{}': {}", module, documento);
+            return Ok(Json(result));
+        }
+        tracing::warn!("Failed to deserialize cached Work API module response");
+    }
+
+    tracing::info!(
+        "Work API cache MISS - Fetching module '{}' for: {}",
+        module,
+        documento
+    );
     let work_api = crate::services::WorkApiService::new(&state.config);
     let result = work_api.fetch_module(&module, documento).await?;
 
-    Ok(Json(
-        result.unwrap_or(serde_json::json!({"error": "No data"})),
-    ))
+    let response = result.unwrap_or(serde_json::json!({"error": "No data"}));
+
+    // Cache successful response
+    if let Ok(json_str) = serde_json::to_string(&response) {
+        state.work_api_cache.insert(cache_key, json_str).await;
+    }
+
+    Ok(Json(response))
 }
 
 /// POST /api/v1/leads

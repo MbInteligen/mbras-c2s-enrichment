@@ -66,6 +66,14 @@ async fn main() -> anyhow::Result<()> {
         .build();
     tracing::info!("Contact enrichment cache initialized");
 
+    // Create Work API response cache (1 hour TTL, 100k max entries)
+    // Caches raw Work API responses to reduce external API calls and improve performance
+    let work_api_cache = Cache::builder()
+        .time_to_live(Duration::from_secs(3600)) // 1 hour
+        .max_capacity(100_000)
+        .build();
+    tracing::info!("Work API response cache initialized (1h TTL, 100k capacity)");
+
     // Initialize C2S direct client
     // Formerly "gateway client", now communicates directly with C2S API
     let gateway_client = match gateway_client::C2sGatewayClient::new(
@@ -90,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
         recent_cpf_cache,
         processing_leads_cache,
         contact_to_cpf_cache,
+        work_api_cache,
     });
 
     // Build router

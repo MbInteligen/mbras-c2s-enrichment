@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Found legacy tables:");
     for (table,) in &tables {
         println!("- {}", table);
-        
+
         // Get columns for this table
         let columns: Vec<(String, String)> = sqlx::query_as(
             "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = $1 ORDER BY ordinal_position"

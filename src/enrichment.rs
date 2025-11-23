@@ -56,8 +56,9 @@ pub async fn find_existing_enrichment(
 
     // 2. Check Database
     // Normalize phone
-    let normalized_phone = phone.map(|p| p.chars().filter(|c| c.is_ascii_digit()).collect::<String>());
-    
+    let normalized_phone =
+        phone.map(|p| p.chars().filter(|c| c.is_ascii_digit()).collect::<String>());
+
     // Search party_contacts -> parties -> party_enrichments
     // We prioritize enriched parties
     // Search party_contacts -> parties -> party_enrichments
@@ -101,7 +102,10 @@ pub async fn find_existing_enrichment(
     };
 
     // 3. Update Cache
-    state.contact_to_cpf_cache.insert(cache_key, enrichment.clone()).await;
+    state
+        .contact_to_cpf_cache
+        .insert(cache_key, enrichment.clone())
+        .await;
 
     Ok(enrichment)
 }
@@ -439,16 +443,16 @@ pub async fn enrich_and_send_workflow(
     // OPTIMIZATION: Check DB/Cache first
     if let Ok(Some(existing)) = find_existing_enrichment(&state, phone, email).await {
         tracing::info!("✅ Found existing enrichment for CPF: {}", existing.cpf);
-        
+
         // Try to format message from existing data
         if let Some(data_value) = existing.enriched_data {
-             if let Ok(work_data) = serde_json::from_value::<WorkApiCompleteResponse>(data_value) {
+            if let Ok(work_data) = serde_json::from_value::<WorkApiCompleteResponse>(data_value) {
                 let message_body = format_enriched_message_body(
                     customer_name,
                     phone.unwrap_or(""),
                     email.unwrap_or(""),
                     &[serde_json::to_value(&work_data).unwrap()],
-                    true, 
+                    true,
                 );
 
                 tracing::info!("Sending cached message to C2S");
@@ -462,15 +466,17 @@ pub async fn enrich_and_send_workflow(
                     stored_count: 0,
                     entity_ids: vec![existing.party_id],
                 });
-             }
+            }
         }
-        tracing::warn!("Found existing enrichment but failed to parse data, falling back to external APIs");
+        tracing::warn!(
+            "Found existing enrichment but failed to parse data, falling back to external APIs"
+        );
     }
 
     // Step 1: Find CPF(s) via Diretrix
     tracing::info!("Step 1: Finding CPF via Diretrix");
     let cpf_result = find_cpf_via_diretrix(phone, email, config).await?;
-    
+
     tracing::info!(
         "Found {} CPF(s), same_person: {}",
         cpf_result.cpfs.len(),

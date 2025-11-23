@@ -19,7 +19,7 @@ use crate::{
 #[derive(Debug, Deserialize)]
 pub struct GoogleAdsWebhookQuery {
     /// Google's webhook verification key (required for security)
-    google_key: String,
+    google_key: Option<String>,
 }
 
 /// Response for Google Ads webhook
@@ -55,8 +55,12 @@ pub async fn google_ads_webhook_handler(
         payload.campaign_id
     );
 
-    // Step 1: Validate google_key (MANDATORY)
-    validate_google_key(&app_state.config, &query.google_key)?;
+    // Step 1: Validate google_key (MANDATORY) - check auth BEFORE any other validation
+    let google_key = query
+        .google_key
+        .as_deref()
+        .ok_or_else(|| AppError::Unauthorized("Missing google_key parameter".to_string()))?;
+    validate_google_key(&app_state.config, google_key)?;
 
     // Step 2: Check for duplicate (idempotency via unique constraint)
     if is_duplicate_lead(&app_state.db, &payload.lead_id).await? {
@@ -222,16 +226,15 @@ async fn perform_inline_enrichment(
     } else {
         // Try Diretrix lookup by phone/email (using optimized lookup)
         // First check cache/DB
-        if let Ok(Some(existing)) = crate::enrichment::find_existing_enrichment(state, phone, email).await {
+        if let Ok(Some(existing)) =
+            crate::enrichment::find_existing_enrichment(state, phone, email).await
+        {
             tracing::info!("✅ CACHE/DB HIT: Found CPF {} for contact", existing.cpf);
             Some(existing.cpf)
         } else {
             // Fallback to Diretrix
-            let lookup_result = crate::enrichment::find_cpf_via_diretrix(
-                phone, 
-                email, 
-                &state.config
-            ).await;
+            let lookup_result =
+                crate::enrichment::find_cpf_via_diretrix(phone, email, &state.config).await;
 
             match lookup_result {
                 Ok(result) if !result.cpfs.is_empty() => {

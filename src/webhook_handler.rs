@@ -188,12 +188,7 @@ async fn process_webhook_event(
     .await?;
 
     // 3. Spawn background enrichment job
-    spawn_enrichment_job(
-        state.clone(),
-        lead_id.clone(),
-        updated_at_ts,
-        event,
-    );
+    spawn_enrichment_job(state.clone(), lead_id.clone(), updated_at_ts, event);
 
     Ok(ProcessResult::Processed)
 }

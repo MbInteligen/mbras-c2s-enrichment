@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Fetch all legacy entities
     let entities: Vec<LegacyEntity> = sqlx::query_as(
-        "SELECT entity_id, national_id, name, canonical_name, created_at FROM core.entities"
+        "SELECT entity_id, national_id, name, canonical_name, created_at FROM core.entities",
     )
     .fetch_all(&pool)
     .await?;
@@ -64,8 +64,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for entity in entities {
         processed_count += 1;
         if processed_count % 1000 == 0 {
-            tracing::info!("Processed {}/{} entities (Migrated: {}, Skipped: {}, Errors: {})", 
-                processed_count, total_entities, migrated_count, skipped_count, error_count);
+            tracing::info!(
+                "Processed {}/{} entities (Migrated: {}, Skipped: {}, Errors: {})",
+                processed_count,
+                total_entities,
+                migrated_count,
+                skipped_count,
+                error_count
+            );
         }
 
         let cpf = match &entity.national_id {
@@ -77,15 +83,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // Check if already exists in parties
-        let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM core.parties WHERE cpf_cnpj = $1)"
-        )
-        .bind(cpf)
-        .fetch_one(&pool)
-        .await?;
+        let exists: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM core.parties WHERE cpf_cnpj = $1)")
+                .bind(cpf)
+                .fetch_one(&pool)
+                .await?;
 
         if exists {
-            tracing::debug!("Skipping entity {} (CPF {} already exists)", entity.entity_id, cpf);
+            tracing::debug!(
+                "Skipping entity {} (CPF {} already exists)",
+                entity.entity_id,
+                cpf
+            );
             skipped_count += 1;
             continue;
         }
@@ -113,7 +122,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             VALUES ($1, 'person', $2, $3, $4, false, $5, now())
             ON CONFLICT (id) DO NOTHING
-            "#
+            "#,
         )
         .bind(party_id)
         .bind(cpf)
@@ -130,12 +139,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // 2. Fetch Profile Data
-        // Note: Based on previous schema inspection, entity_profiles has: sex, birth_date. 
-        // It does NOT have mother_name in the list I saw earlier? 
-        // Let's check the schema output again... 
+        // Note: Based on previous schema inspection, entity_profiles has: sex, birth_date.
+        // It does NOT have mother_name in the list I saw earlier?
+        // Let's check the schema output again...
         // "entity_profiles ... sex, birth_date, death_date, nationality, marital_status..."
         // It does NOT list mother_name. So we will skip mother_name.
-        
+
         let profile: Option<LegacyProfile> = sqlx::query_as(
             "SELECT sex, birth_date, NULL as mother_name FROM core.entity_profiles WHERE entity_id = $1"
         )
@@ -146,14 +155,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // 3. Insert People
         if let Some(prof) = profile {
-             let insert_people = sqlx::query(
+            let insert_people = sqlx::query(
                 r#"
                 INSERT INTO core.people (
                     party_id, full_name, birth_date, sex, document_cpf, created_at, updated_at
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, now())
                 ON CONFLICT (party_id) DO NOTHING
-                "#
+                "#,
             )
             .bind(party_id)
             .bind(&entity.name)
@@ -171,14 +180,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         } else {
             // Insert minimal person record
-             let insert_people = sqlx::query(
+            let insert_people = sqlx::query(
                 r#"
                 INSERT INTO core.people (
                     party_id, full_name, document_cpf, created_at, updated_at
                 )
                 VALUES ($1, $2, $3, $4, now())
                 ON CONFLICT (party_id) DO NOTHING
-                "#
+                "#,
             )
             .bind(party_id)
             .bind(&entity.name)
@@ -187,7 +196,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .execute(&mut *tx)
             .await;
 
-             if let Err(e) = insert_people {
+            if let Err(e) = insert_people {
                 tracing::error!("Failed to insert people {}: {}", party_id, e);
                 error_count += 1;
                 continue;
@@ -196,7 +205,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // 4. Migrate Phones
         let phones: Vec<LegacyPhone> = sqlx::query_as(
-            "SELECT phone, is_primary, is_whatsapp FROM core.entity_phones WHERE entity_id = $1"
+            "SELECT phone, is_primary, is_whatsapp FROM core.entity_phones WHERE entity_id = $1",
         )
         .bind(party_id)
         .fetch_all(&pool)
@@ -204,7 +213,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_default();
 
         for phone in phones {
-            let contact_type = if phone.is_whatsapp { "whatsapp" } else { "phone" };
+            let contact_type = if phone.is_whatsapp {
+                "whatsapp"
+            } else {
+                "phone"
+            };
             // Normalize phone (digits only)
             let normalized: String = phone.phone.chars().filter(|c| c.is_ascii_digit()).collect();
 
@@ -216,7 +229,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 VALUES (gen_random_uuid(), $1, $2::core.contact_type_enum, $3, $4, $5, now(), now())
                 ON CONFLICT DO NOTHING
-                "#
+                "#,
             )
             .bind(party_id)
             .bind(contact_type)
@@ -228,13 +241,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // 5. Migrate Emails
-        let emails: Vec<LegacyEmail> = sqlx::query_as(
-            "SELECT email, is_primary FROM core.entity_emails WHERE entity_id = $1"
-        )
-        .bind(party_id)
-        .fetch_all(&pool)
-        .await
-        .unwrap_or_default();
+        let emails: Vec<LegacyEmail> =
+            sqlx::query_as("SELECT email, is_primary FROM core.entity_emails WHERE entity_id = $1")
+                .bind(party_id)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default();
 
         for email in emails {
             let _ = sqlx::query(

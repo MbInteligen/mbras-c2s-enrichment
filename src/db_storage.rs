@@ -501,7 +501,8 @@ impl EnrichmentStorage {
         email: Option<&str>,
     ) -> Result<Option<String>, AppError> {
         // Normalize phone
-        let normalized_phone = phone.map(|p| p.chars().filter(|c| c.is_ascii_digit()).collect::<String>());
+        let normalized_phone =
+            phone.map(|p| p.chars().filter(|c| c.is_ascii_digit()).collect::<String>());
 
         let result = sqlx::query_scalar(
             r#"
