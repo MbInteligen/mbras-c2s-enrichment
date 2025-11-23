@@ -153,7 +153,10 @@ RUST_LOG=info  # or debug for verbose
 # Unit tests
 cargo test
 
-# Integration tests
+# Integration tests (requires TEST_DATABASE_URL or DATABASE_URL)
+cargo test --test storage_integration -- --ignored
+
+# Local API tests
 ./docs/scripts/testing/test-local.sh
 
 # Docker integration
@@ -165,6 +168,8 @@ k6 run tests/smoke-test.js
 # Load test
 k6 run tests/load-test.js
 ```
+
+**Test Quality**: ✅ Idiomatic error handling with `anyhow::Context` for clear error chains
 
 ### Documentation
 - [Documentation Index](docs/README.md) - Complete documentation navigation
@@ -390,9 +395,16 @@ See [TESTING.md](docs/TESTING.md#troubleshooting-tests) for more.
 5. Check lints: `cargo clippy`
 6. Submit PR
 
+### Code Quality Standards
+
+- ✅ **Error Handling**: Use `anyhow::Context` for descriptive error chains
+- ✅ **Performance**: Sub-100ms response times for interactive endpoints
+- ✅ **Testing**: Integration tests with clear error messages
+- ✅ **Documentation**: Keep README, CLAUDE.md, and code comments up-to-date
+
 ## License
 
-[Add your license]
+**Proprietary** - All rights reserved. Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 ## Support
 

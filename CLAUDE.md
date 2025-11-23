@@ -234,13 +234,34 @@ PORT=8080
 
 ## Important Conventions & Gotchas
 
-### 1. Work API Rate Limiting
+### 1. Error Handling (Updated 2025-11-23)
+- **Always use `anyhow::Context`** for descriptive error chains
+- **Pattern**:
+  ```rust
+  use anyhow::Context;
+  
+  database_operation()
+      .await
+      .context("failed to create database pool")?;
+  ```
+- **Benefits**: Clear error messages with full context chain
+- **Example Error Output**:
+  ```
+  Error: failed to store enriched person: Database error: connection refused
+  
+  Caused by:
+      0: failed to create database pool
+      1: connection refused
+  ```
+- **See**: `tests/storage_integration.rs` for reference implementation
+
+### 2. Work API Rate Limiting
 - **Recommended delay**: **3 seconds** between requests
 - See `docs/integrations/WORK_API_RATE_LIMITING.md` for details
 - Failures are usually timeouts, not rate limits
 - Use retry logic with exponential backoff (5s, 10s, 20s)
 
-### 2. Data Format Conversions
+### 3. Data Format Conversions
 
 **Dates**:
 - Work API returns: `DD/MM/YYYY`
@@ -257,7 +278,7 @@ PORT=8080
 - May come with or without formatting (dots/dashes)
 - Store as plain text without formatting
 
-### 3. Database Schema
+### 4. Database Schema
 
 **Core Tables**:
 - `core.parties` - People (customers/leads)
@@ -276,7 +297,7 @@ PORT=8080
 
 **Important**: When inserting emails, check for existing by `normalized_email`, not `email`
 
-### 4. Deduplication Cache
+### 5. Deduplication Cache
 
 **Current Implementation** (in-memory, single instance):
 ```rust
