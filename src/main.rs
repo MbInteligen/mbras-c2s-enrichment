@@ -210,6 +210,8 @@ async fn main() -> anyhow::Result<()> {
             post(google_ads_handler::google_ads_webhook_handler),
         )
         .with_state(app_state)
+        .layer(TraceLayer::new_for_http())
+        .layer(CorsLayer::permissive())
         .layer(
             ServiceBuilder::new()
                 // Request size limit: 5MB max payload (prevents memory exhaustion)
@@ -218,9 +220,7 @@ async fn main() -> anyhow::Result<()> {
                 .layer(GovernorLayer {
                     config: governor_conf,
                 }),
-        )
-        .layer(CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http());
+        );
 
     // Start server
     let addr = format!("0.0.0.0:{}", config.port);
