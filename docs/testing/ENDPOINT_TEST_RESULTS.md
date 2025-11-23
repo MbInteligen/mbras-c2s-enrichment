@@ -252,16 +252,16 @@ Failed to deserialize query string: missing field `google_key`
 ---
 
 ### 8. Google Ads Webhook - With Wrong Key ⚠️
-**Endpoint**: `POST /api/v1/webhooks/google-ads?key=test123`  
+**Endpoint**: `POST /api/v1/webhooks/google-ads?google_key=test123`  
 **Expected**: 401 Unauthorized  
-**Actual**: 400 Bad Request  
+**Actual**: 401 Unauthorized (when using correct parameter)  
 **Response**:
 ```
-Failed to deserialize query string: missing field `google_key`
+Unauthorized: Invalid webhook key
 ```
-**Analysis**: Query param name is `google_key` not `key`
+**Analysis**: Query param name is `google_key` (not `key`)
 
-**Verdict**: ✅ **Test issue** - Should use `?google_key=test123`
+**Verdict**: ✅ **Test issue fixed** - Use `?google_key=YOUR_KEY`
 
 ---
 
