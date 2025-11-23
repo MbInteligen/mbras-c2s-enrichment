@@ -97,9 +97,10 @@
 **[Testing Documentation](testing/)**
 - [Testing Guide](testing/TESTING.md) - Testing strategies and procedures
 - [Testing Complete](testing/TESTING_COMPLETE.md) - Test completion report
+- [Endpoint Test Results](testing/ENDPOINT_TEST_RESULTS.md) - API endpoint test results
 - [Performance Monitoring](testing/PERFORMANCE_MONITORING.md) - Performance metrics and monitoring
 
-**Testing Scripts:** See [../tools/scripts/testing/](../tools/scripts/testing/)
+**Testing Scripts:** See [`../scripts/testing/`](../scripts/testing/)
 
 ---
 
@@ -125,13 +126,11 @@
 rust-c2s-api/
 ├── docs/              # All documentation (you are here)
 ├── src/               # Rust source code
+├── scripts/           # Executable scripts
+│   ├── testing/      # Test scripts
+│   ├── deployment/   # Deployment scripts
+│   └── data/         # Data processing scripts
 ├── migrations/        # Database migrations
-├── tools/             # Development tools & utilities
-│   ├── scripts/      # Utility scripts
-│   │   ├── deployment/   # Deployment scripts
-│   │   ├── testing/      # Testing scripts
-│   │   └── data/         # Data processing scripts
-│   └── examples/     # Rust code examples
 ├── tests/             # Integration tests
 └── temp_data/         # Temporary data files
 ```
@@ -140,26 +139,22 @@ rust-c2s-api/
 
 - **[../README.md](../README.md)** - Main project README
 - **[../CLAUDE.md](../CLAUDE.md)** - AI assistant context and project conventions
-- **[../AGENTS.md](../AGENTS.md)** - Repository guidelines for contributors
+- **[AGENTS.md](AGENTS.md)** - Repository guidelines for contributors
+- **[OPTIMIZATION_SUMMARY.md](OPTIMIZATION_SUMMARY.md)** - Performance optimization details
 - **[../Cargo.toml](../Cargo.toml)** - Rust dependencies and configuration
 - **[../.env.example](../.env.example)** - Environment variables template
 
 ### Scripts
 
-**Deployment:**
-- [`../tools/scripts/deployment/RUN_SERVER.sh`](../tools/scripts/deployment/RUN_SERVER.sh) - Start local development server
-
 **Testing:**
-- [`../tools/scripts/testing/test-local.sh`](../tools/scripts/testing/test-local.sh) - Local environment tests
-- [`../tools/scripts/testing/test_all_modules.sh`](../tools/scripts/testing/test_all_modules.sh) - Test all Work API modules
-- [`../tools/scripts/testing/test_work_api.sh`](../tools/scripts/testing/test_work_api.sh) - Test Work API integration
-- [`../tools/scripts/testing/test_webhook.sh`](../tools/scripts/testing/test_webhook.sh) - Test C2S webhooks
-- [`../tools/scripts/testing/test_google_webhook.sh`](../tools/scripts/testing/test_google_webhook.sh) - Test Google Ads webhooks
+- [`../scripts/testing/test_all_endpoints.sh`](../scripts/testing/test_all_endpoints.sh) - Test all API endpoints
+- [`../scripts/testing/test_all_endpoints_v2.sh`](../scripts/testing/test_all_endpoints_v2.sh) - Enhanced endpoint tests
+- [`../scripts/testing/test_email_perf.sh`](../scripts/testing/test_email_perf.sh) - Email search performance tests
+- [`../scripts/testing/test_final_results.sh`](../scripts/testing/test_final_results.sh) - Final comprehensive tests
+- [`../scripts/testing/test_performance.sh`](../scripts/testing/test_performance.sh) - Performance benchmarking
 
-**Data Processing:**
-- [`../tools/scripts/data/enrich_batch.sh`](../tools/scripts/data/enrich_batch.sh) - Batch CPF enrichment
-- [`../tools/scripts/data/import_enriched_to_db.sh`](../tools/scripts/data/import_enriched_to_db.sh) - Import enriched data to PostgreSQL
-- [`../tools/scripts/data/retry_failed_cpfs.sh`](../tools/scripts/data/retry_failed_cpfs.sh) - Retry failed enrichments
+**Deployment & Data:**
+- See `../scripts/deployment/` and `../scripts/data/` directories for additional scripts
 
 ---
 

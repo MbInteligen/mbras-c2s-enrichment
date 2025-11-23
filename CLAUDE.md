@@ -89,7 +89,19 @@ rust-c2s-api/
 │   ├── db_storage.rs        # Data persistence logic
 │   └── errors.rs            # Error handling
 │
+├── scripts/                  # All executable scripts
+│   ├── testing/             # Test scripts
+│   │   ├── test_all_endpoints.sh
+│   │   ├── test_all_endpoints_v2.sh
+│   │   ├── test_email_perf.sh
+│   │   ├── test_final_results.sh
+│   │   └── test_performance.sh
+│   ├── deployment/          # Deployment scripts (if any)
+│   └── data/                # Data processing scripts (if any)
+│
 ├── docs/                     # All documentation and project resources
+│   ├── AGENTS.md            # Agent behavior guidelines
+│   ├── OPTIMIZATION_SUMMARY.md  # Performance optimization technical details
 │   ├── adr/                 # Architecture Decision Records
 │   │   └── ADR-001-PARTY-MODEL-MIGRATION.md
 │   ├── architecture/        # System architecture and design
@@ -104,16 +116,15 @@ rust-c2s-api/
 │   │   ├── DATABASE_SCHEMA_REPORT_FINAL.md
 │   │   ├── DB_STORAGE_ANALYSIS_UPDATED.md
 │   │   ├── SCHEMA_MIGRATION_LEAD_ADDRESS.md
-│   │   └── examples/        # Example API responses and Rust code
-│   │       ├── EXAMPLE_CPF_RESPONSE.json
-│   │       ├── WEALTH_ASSESSMENT_EXAMPLE.json
-│   │       ├── batch_enrich.rs
-│   │       └── import_json_to_db.rs
+│   │   ├── migrations/      # SQL migration files (archived)
+│   │   └── examples/        # Example SQL responses
 │   ├── deployment/          # Deployment guides and checklists
 │   │   ├── DEPLOYMENT.md
 │   │   ├── DEPLOYMENT_CHECKLIST.md
 │   │   ├── FLY_DEPLOYMENT.md
 │   │   └── GOOGLE_ADS_DEPLOYMENT_SUCCESS.md
+│   ├── examples/            # Example API responses and data
+│   │   └── EXAMPLE_CPF_RESPONSE.json
 │   ├── integrations/        # External API integration docs
 │   │   ├── C2S_MANUAL_WEBHOOK_SETUP.md
 │   │   ├── C2S_WEBHOOK_CONFIGURATION.md
@@ -127,6 +138,14 @@ rust-c2s-api/
 │   │   ├── WEBHOOK_IMPLEMENTATION_SUMMARY.md
 │   │   ├── WEBHOOK_SUBSCRIPTION_STATUS.md
 │   │   └── WORK_API_RATE_LIMITING.md
+│   ├── optimization/        # Performance optimization guides
+│   │   ├── DATABASE_FIRST_LOOKUP.md
+│   │   ├── DEPLOYMENT_SUMMARY.md
+│   │   ├── LOCAL_TESTING_GUIDE.md
+│   │   └── QUICK_REFERENCE.md
+│   ├── performance/         # Performance monitoring and reports
+│   │   ├── MEMORY_USAGE_REPORT.md
+│   │   └── PERFORMANCE_MONITORING.md
 │   ├── queries/             # SQL query examples
 │   │   ├── companies.sql
 │   │   ├── customers.sql
@@ -135,24 +154,6 @@ rust-c2s-api/
 │   │   └── work_api_enrichment.sql
 │   ├── schemas/             # Database schema files
 │   │   └── 01_init.sql
-│   ├── scripts/             # All utility scripts
-│   │   ├── data/            # Data processing scripts
-│   │   │   ├── enrich_batch.sh
-│   │   │   ├── import_enriched_to_db.sh
-│   │   │   └── retry_failed_cpfs.sh
-│   │   ├── deployment/      # Deployment scripts
-│   │   │   └── RUN_SERVER.sh
-│   │   └── testing/         # Test scripts
-│   │       ├── TEST_LIVE.sh
-│   │       ├── test-docker.sh
-│   │       ├── test-local.sh
-│   │       ├── test_all_modules.sh
-│   │       ├── test_concurrent_requests.sh
-│   │       ├── test_direct_work_api.sh
-│   │       ├── test_google_webhook.sh
-│   │       ├── test_modules.sh
-│   │       ├── test_webhook.sh
-│   │       └── test_work_api.sh
 │   ├── security/            # Security checklists and guides
 │   │   ├── SECURITY_AND_SCHEMA_FIXES.md
 │   │   ├── SECURITY_CHECKLIST.md
@@ -163,20 +164,25 @@ rust-c2s-api/
 │   │   ├── PROJECT_SUMMARY.md
 │   │   └── SESSION_SUMMARY.md
 │   ├── testing/             # Test documentation
+│   │   ├── ENDPOINT_TEST_RESULTS.md
 │   │   ├── PERFORMANCE_MONITORING.md
-│   │   └── TESTING.md
+│   │   ├── TESTING.md
+│   │   └── TESTING_COMPLETE.md
 │   ├── API_ENDPOINTS.md     # API endpoint documentation
 │   ├── QUICKSTART.md        # Quick start guide
 │   └── README.md            # Documentation index
 │
-├── tests/                    # Integration tests (k6)
-├── target/                   # Rust build artifacts (gitignored)
+├── migrations/              # SQL migrations (active)
+├── tests/                   # Integration tests (Rust + JS)
+├── target/                  # Rust build artifacts (gitignored)
 │
 ├── Cargo.toml               # Rust dependencies
 ├── Dockerfile               # Multi-stage Docker build (nightly Rust)
 ├── fly.toml                 # Fly.io configuration
 ├── docker-compose.yml       # Local development
+├── google-ads.yaml.example  # Google Ads config template
 ├── .env.example             # Environment variable template
+├── CLAUDE.md                # AI assistant context (this file)
 └── README.md                # Project documentation
 ```
 
@@ -826,7 +832,7 @@ Success Rate: 100%
 Performance Rating: 🟢 EXCELLENT
 ```
 
-**Performance Benchmarks** (created `test_performance.sh`):
+**Performance Benchmarks** (see `scripts/testing/test_performance.sh`):
 ```
 Industry Standards:
 🟢 Excellent:   < 100ms  (Google Web Performance target)
