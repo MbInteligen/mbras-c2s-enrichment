@@ -110,13 +110,29 @@ pub async fn find_existing_enrichment(
     Ok(enrichment)
 }
 
-/// Validate email address
+/// Validates email address with fake pattern detection
 ///
-/// Checks for:
-/// - Basic email format (contains @ and .)
-/// - Fake/placeholder patterns (repeated digits like 9999, 1111)
-/// - Minimum length requirements
-/// - Valid domain structure
+/// Performs comprehensive email validation including:
+/// - Basic format checks (minimum length, @ and . presence)
+/// - RFC 5322 email regex validation
+/// - Fake pattern detection (repeated digits like 999999, 111111)
+/// - Domain structure validation
+///
+/// # Arguments
+/// * `email` - The email address to validate
+///
+/// # Returns
+/// * `true` if the email is valid and not a fake pattern
+/// * `false` if the email is invalid or matches a fake pattern
+///
+/// # Examples
+/// ```
+/// use rust_c2s_api::enrichment::is_valid_email;
+///
+/// assert!(is_valid_email("user@example.com"));
+/// assert!(!is_valid_email("fake999999@example.com")); // Fake pattern
+/// assert!(!is_valid_email("not_an_email")); // Invalid format
+/// ```
 pub fn is_valid_email(email: &str) -> bool {
     // Basic checks
     if email.len() < 5 || !email.contains('@') || !email.contains('.') {
@@ -156,14 +172,33 @@ pub fn is_valid_email(email: &str) -> bool {
     true
 }
 
-/// Validate and normalize Brazilian phone number
+/// Validates and normalizes Brazilian phone numbers to E.164 format
 ///
-/// Uses phonenumber library (port of Google's libphonenumber) to:
-/// - Parse phone number with Brazilian region (BR)
-/// - Validate if it's a valid Brazilian number
-/// - Return normalized E.164 format (+5511987654321)
+/// Uses the phonenumber library (Google's libphonenumber) to parse and validate
+/// Brazilian phone numbers, returning them in international E.164 format.
 ///
-/// Returns: (is_valid, normalized_phone_or_error_msg)
+/// # Arguments
+/// * `raw` - The phone number to validate (can include formatting)
+///
+/// # Returns
+/// * `(true, normalized_phone)` - Phone is valid, returns E.164 format (+5511987654321)
+/// * `(false, error_message)` - Phone is invalid, returns error description
+///
+/// # Supported Formats
+/// - Cell phones: 11987654321, (11) 98765-4321, +5511987654321
+/// - Landlines: 1133334444, (11) 3333-4444
+///
+/// # Examples
+/// ```
+/// use rust_c2s_api::enrichment::validate_br_phone;
+///
+/// let (valid, normalized) = validate_br_phone("11987654321");
+/// assert!(valid);
+/// assert_eq!(normalized, "+5511987654321");
+///
+/// let (valid, _) = validate_br_phone("invalid");
+/// assert!(!valid);
+/// ```
 pub fn validate_br_phone(raw: &str) -> (bool, String) {
     // Skip empty or very short strings
     if raw.trim().is_empty() || raw.len() < 8 {
@@ -326,7 +361,24 @@ pub async fn enrich_cpfs_with_work_api(
     Ok(enriched_data)
 }
 
-/// Format enriched data as message body
+/// Formats enriched customer data into a message body for C2S
+///
+/// Creates a formatted message with enriched customer information, handling both
+/// cases where phone and email belong to the same person or different people.
+///
+/// # Arguments
+/// * `customer_name` - The customer's name
+/// * `phone` - The phone number
+/// * `email` - The email address
+/// * `enriched_data` - Array of enriched data from Work API (1 or 2 entries)
+/// * `same_person` - Whether phone and email belong to the same person
+///
+/// # Returns
+/// A formatted string message ready to send to C2S
+///
+/// # Message Format
+/// - Same person: Single enriched profile with "📞📧" header
+/// - Different people: Two separate profiles with "⚠️" warning header
 pub fn format_enriched_message_body(
     customer_name: &str,
     phone: &str,

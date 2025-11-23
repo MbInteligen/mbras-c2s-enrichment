@@ -45,8 +45,13 @@ moka = { version = "0.12", features = ["future"] }
 # Phone number validation (Brazilian numbers)
 phonenumber = "0.3"
 
+# OpenAPI/Swagger UI
+utoipa = { version = "4", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "6", features = ["axum"] }
+
 [dev-dependencies]
 wiremock = "0.6"
+proptest = "1.4"
 
 [profile.release]
 opt-level = 3

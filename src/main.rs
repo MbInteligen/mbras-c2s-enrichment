@@ -13,6 +13,8 @@ mod webhook_handler;
 mod webhook_models;
 
 use axum::{
+    http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
     Router,
 };
@@ -23,6 +25,65 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::Config;
 use crate::db::Database;
+
+/// Serves the OpenAPI specification YAML file
+async fn serve_openapi_spec() -> impl IntoResponse {
+    match tokio::fs::read_to_string("openapi.yml").await {
+        Ok(content) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "text/yaml")],
+            content,
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::NOT_FOUND,
+            "OpenAPI spec not found. Generate with: cargo run --bin generate-openapi",
+        )
+            .into_response(),
+    }
+}
+
+/// Serves the Swagger UI HTML page
+async fn serve_swagger_ui() -> impl IntoResponse {
+    let html = r#"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rust C2S API - Swagger UI</title>
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+    <style>
+        body { margin: 0; padding: 0; }
+    </style>
+</head>
+<body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+    <script>
+        window.onload = function() {
+            window.ui = SwaggerUIBundle({
+                url: "/api-docs/openapi.yml",
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                layout: "StandaloneLayout"
+            });
+        };
+    </script>
+</body>
+</html>
+"#;
+    (
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
+    )
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -104,6 +165,10 @@ async fn main() -> anyhow::Result<()> {
     // Build router
     let app = Router::new()
         .route("/health", get(handlers::health))
+        // API Documentation
+        .route("/docs", get(serve_swagger_ui))
+        .route("/api-docs/openapi.yml", get(serve_openapi_spec))
+        // API endpoints
         .route("/api/v1/leads", post(handlers::process_lead))
         .route("/api/v1/contributor/customer", get(handlers::get_customer))
         .route("/api/v1/customers/:id", get(handlers::get_customer_by_id))

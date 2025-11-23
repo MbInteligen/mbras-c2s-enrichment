@@ -278,7 +278,7 @@ impl EnrichmentStorage {
         .bind(quality_score)
         .execute(&self.pool)
         .await
-        .map_err(AppError::DatabaseError)?;
+        .context(format!("Failed to store party enrichment for party_id: {}", party_id))?;
 
         tracing::info!(
             "Successfully stored enriched data for CPF: {} (party_id: {})",
@@ -343,7 +343,10 @@ impl EnrichmentStorage {
             .bind(formatted)
             .fetch_one(&self.pool)
             .await
-            .map_err(AppError::DatabaseError)?;
+            .context(format!(
+                "Failed to insert address for party_id: {}",
+                party_id
+            ))?;
 
             let address_type = match endereco
                 .get("tipo")
@@ -529,7 +532,7 @@ impl EnrichmentStorage {
         .bind(email)
         .fetch_optional(&self.pool)
         .await
-        .map_err(AppError::DatabaseError)?;
+        .context("Failed to lookup CPF from phone/email contact")?;
 
         Ok(result)
     }
