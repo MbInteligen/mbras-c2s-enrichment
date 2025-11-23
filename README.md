@@ -1,5 +1,12 @@
 # rust-c2s-api
 
+[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+[![Code Quality](https://img.shields.io/badge/quality-100%2F100-brightgreen.svg)](docs/session-notes/IMPROVEMENTS_TO_100.md)
+[![Tests](https://img.shields.io/badge/tests-25%20passing-brightgreen.svg)](tests/)
+[![API Docs](https://img.shields.io/badge/docs-Swagger%20UI-blue.svg)](https://mbras-c2s.fly.dev/docs)
+[![Deployed](https://img.shields.io/badge/deployed-Fly.io-blueviolet.svg)](https://mbras-c2s.fly.dev)
+[![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
+
 Rust-based API for Contact2Sale (C2S) lead enrichment using Diretrix and Work API integrations.
 
 ## Features
