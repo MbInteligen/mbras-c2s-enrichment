@@ -8,7 +8,7 @@
 /// 5. Store in database
 use crate::config::Config;
 use crate::db_storage::EnrichmentStorage;
-use crate::errors::AppError;
+use crate::errors::{AppError, ResultExt};
 use crate::gateway_client::C2sGatewayClient;
 use crate::handlers::AppState;
 use crate::models::WorkApiCompleteResponse;
@@ -80,7 +80,7 @@ pub async fn find_existing_enrichment(
     .bind(email)
     .fetch_optional(&state.db)
     .await
-    .map_err(AppError::DatabaseError)?;
+    .context("Failed to check database for existing enrichment")?;
 
     let enrichment = if let Some(row) = row {
         use sqlx::Row;

@@ -1,4 +1,4 @@
-use crate::errors::AppError;
+use crate::errors::{AppError, ResultExt};
 use crate::models::WorkApiCompleteResponse;
 use bigdecimal::BigDecimal;
 use serde_json::json;
@@ -142,7 +142,7 @@ impl EnrichmentStorage {
         .bind(cpf)
         .fetch_optional(&self.pool)
         .await
-        .map_err(AppError::DatabaseError)?
+        .context(format!("Failed to check existing party for CPF: {}", cpf))?
         {
             Some(existing) => {
                 sqlx::query(
@@ -174,7 +174,7 @@ impl EnrichmentStorage {
                 .bind(None::<String>)
                 .execute(&self.pool)
                 .await
-                .map_err(AppError::DatabaseError)?;
+                .context(format!("Failed to update existing party for CPF: {}", cpf))?;
                 existing.0
             }
             None => {
@@ -201,7 +201,7 @@ impl EnrichmentStorage {
                 .bind(None::<String>)
                 .fetch_one(&self.pool)
                 .await
-                .map_err(AppError::DatabaseError)?;
+                .context(format!("Failed to insert new party for CPF: {}", cpf))?;
                 inserted.0
             }
         };
@@ -233,14 +233,21 @@ impl EnrichmentStorage {
         .bind(cpf)
         .execute(&self.pool)
         .await
-        .map_err(AppError::DatabaseError)?;
+        .context(format!(
+            "Failed to insert person record for party_id: {}",
+            party_id
+        ))?;
 
         // Step 3: Store contacts
         if let Some(emails) = work_data.get("emails").and_then(|e| e.as_array()) {
-            self.store_party_emails(party_id, emails).await?;
+            self.store_party_emails(party_id, emails)
+                .await
+                .context(format!("Failed to store emails for party_id: {}", party_id))?;
         }
         if let Some(telefones) = work_data.get("telefones").and_then(|t| t.as_array()) {
-            self.store_party_phones(party_id, telefones).await?;
+            self.store_party_phones(party_id, telefones)
+                .await
+                .context(format!("Failed to store phones for party_id: {}", party_id))?;
         }
         if let Some(enderecos) = work_data.get("enderecos").and_then(|e| e.as_array()) {
             self.store_party_addresses(party_id, enderecos).await?;
