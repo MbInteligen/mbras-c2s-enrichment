@@ -1,6 +1,7 @@
 use std::env;
 use uuid::Uuid;
 
+use anyhow::Context;
 use rust_c2s_api::data::db_storage::EnrichmentStorage;
 use rust_c2s_api::db::Database;
 use rust_c2s_api::models::WorkApiCompleteResponse;
@@ -12,11 +13,11 @@ use rust_c2s_api::models::WorkApiCompleteResponse;
 async fn store_enriched_person_smoke_test() -> anyhow::Result<()> {
     let db_url = env::var("TEST_DATABASE_URL")
         .or_else(|_| env::var("DATABASE_URL"))
-        .map_err(|_| anyhow::anyhow!("Set TEST_DATABASE_URL or DATABASE_URL to run this test"))?;
+        .context("Set TEST_DATABASE_URL or DATABASE_URL to run this test")?;
 
     let db = Database::new(&db_url)
         .await
-        .map_err(|e| anyhow::anyhow!(e))?;
+        .context("failed to create database pool")?;
     let storage = EnrichmentStorage::new(db.pool.clone());
 
     // Minimal Work API payload; storage is resilient to missing optional fields.
@@ -35,7 +36,7 @@ async fn store_enriched_person_smoke_test() -> anyhow::Result<()> {
     let party_id = storage
         .store_enriched_person_with_lead(&cpf, &payload, Some("test-lead-id"))
         .await
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        .map_err(|e| anyhow::anyhow!("failed to store enriched person: {e}"))?;
 
     assert_ne!(party_id, Uuid::nil());
     Ok(())
