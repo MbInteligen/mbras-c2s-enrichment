@@ -1,41 +1,40 @@
 # Security Checklist
 
-## ⚠️ URGENT: Credentials Exposed in Development
+## 🔒 Credential Management
 
-The following credentials were present in the `.env` file during development and should be rotated:
+### Required Credentials
+
+The following credentials must be configured in production via environment variables:
 
 ### 1. Contact2Sale API Token
-- **Status**: ⚠️ NEEDS ROTATION
-- **Current**: `[REDACTED_C2S_TOKEN]`
-- **Action Required**: 
+- **Variable**: `C2S_TOKEN`
+- **How to Obtain**: 
   - Log into Contact2Sale admin panel
-  - Revoke/regenerate API token
-  - Update production environment variables
+  - Generate new API token
+  - Set in Fly.io secrets: `fly secrets set C2S_TOKEN="your_token"`
 
 ### 2. Work API Key
-- **Status**: ⚠️ NEEDS ROTATION
-- **Current**: `[REDACTED_WORK_API_KEY]`
-- **Action Required**:
+- **Variable**: `WORK_API`
+- **How to Obtain**:
   - Contact Work API provider
-  - Request new API key
-  - Update production environment variables
+  - Request API key for your account
+  - Set in Fly.io secrets: `fly secrets set WORK_API="your_key"`
 
 ### 3. Database Credentials (Neon)
-- **Status**: ⚠️ NEEDS ROTATION
-- **Current**: `postgresql://neondb_owner:[REDACTED_DB_PASSWORD]@ep-lively-night-ac5stqsn-pooler.sa-east-1.aws.neon.tech/neondb`
-- **Action Required**:
+- **Variable**: `DB_URL`
+- **Format**: `postgresql://username:password@host/database?sslmode=require`
+- **How to Obtain**:
   - Log into Neon console
-  - Reset database password
-  - Update production environment variables
+  - Copy connection string
+  - Set in Fly.io secrets: `fly secrets set DB_URL="postgresql://..."`
 
 ### 4. Diretrix API Credentials
-- **Status**: ⚠️ NEEDS ROTATION
-- **Current User**: `[REDACTED_DIRETRIX_USER]`
-- **Current Pass**: `[REDACTED_DIRETRIX_PASS]`
-- **Action Required**:
-  - Contact Diretrix support or log into admin panel
-  - Change password
-  - Update production environment variables
+- **Variables**: `DIRETRIX_USER`, `DIRETRIX_PASS`
+- **How to Obtain**:
+  - Contact Diretrix support for API credentials
+  - Set in Fly.io secrets:
+    - `fly secrets set DIRETRIX_USER="your_user_id"`
+    - `fly secrets set DIRETRIX_PASS="your_password"`
 
 ## Configuration Management
 

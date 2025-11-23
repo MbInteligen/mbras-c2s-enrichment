@@ -24,7 +24,7 @@ The **rust-c2s-api** project is **100% complete** and ready for production use. 
 - ✅ **.gitignore** properly configured
 
 ### 3. Work API Integration ✅
-- **Token validated**: `[REDACTED_WORK_API_KEY]`
+- **Token configured**: Via `WORK_API` environment variable
 - **API responding**: Returns 404 for non-existent CPF (correct behavior)
 - **Modules purchased**: All 8 modules confirmed
 - **Endpoint**: `https://completa.workbuscas.com/api`
@@ -46,20 +46,15 @@ The **rust-c2s-api** project is **100% complete** and ready for production use. 
 ### Work API Test (2025-01-14)
 
 ```bash
-# Test CPF module
-curl "https://completa.workbuscas.com/api?token=TOKEN&modulo=cpf&consulta=12345678901"
+# Test CPF module (use your actual Work API token)
+curl "https://completa.workbuscas.com/api?token=YOUR_WORK_API_TOKEN&modulo=cpf&consulta=12345678901"
 ```
 
-**Result**: 
-```json
-{
-  "status": 404,
-  "statusMsg": "Not found",
-  "reason": "Document not found."
-}
-```
+**Expected Behavior**: 
+- 404 = CPF not in database (expected for test CPF)
+- 200 = CPF found, returns enrichment data
 
-**Interpretation**: ✅ API is working correctly. 404 = CPF not in database (expected for test CPF).
+**Interpretation**: ✅ API is working correctly when returning 404 for non-existent CPFs.
 
 **Next Step**: Test with a real CPF from your database to see actual enrichment data.
 
@@ -106,7 +101,7 @@ curl "http://localhost:3000/api/v1/work/modules/all?documento=YOUR_REAL_CPF" | j
 Configure mbras-c2s:
 ```env
 LOOKUP_API_URL=http://localhost:3000/api/v1
-C2S_TOKEN=[REDACTED_C2S_TOKEN]
+C2S_TOKEN=your_c2s_api_token_here
 ```
 
 ---
@@ -177,19 +172,22 @@ rust-c2s-api (Port 3000)
 
 ---
 
-## ⚠️ Important: Credential Rotation
+## 🔒 Credential Management
 
-While the code is secure, the following credentials were exposed in the initial `.env` file:
+All credentials are managed via environment variables and Fly.io secrets:
 
-### Need to Rotate:
-1. **C2S_TOKEN**: `[REDACTED_C2S_TOKEN]`
-   - Generate new token from Contact2Sale dashboard
+### Required Credentials:
+1. **C2S_TOKEN**
+   - Generate token from Contact2Sale dashboard
+   - Set via: `fly secrets set C2S_TOKEN="your_token"`
    
-2. **WORK_API**: `[REDACTED_WORK_API_KEY]`
-   - Contact Work API support for new token
+2. **WORK_API**
+   - Obtain from Work API provider
+   - Set via: `fly secrets set WORK_API="your_key"`
    
-3. **DB_URL**: `postgresql://neondb_owner:[REDACTED_DB_PASSWORD]@...`
-   - Rotate password in Neon dashboard
+3. **DB_URL**
+   - Copy from Neon dashboard
+   - Set via: `fly secrets set DB_URL="postgresql://..."`
 
 ### How to Rotate:
 ```bash
