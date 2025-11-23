@@ -4,6 +4,50 @@
 
 ---
 
+## 🚨 CRITICAL SECURITY RULES FOR AI ASSISTANTS
+
+### ⚠️ NEVER EXPOSE SECRETS IN DOCUMENTATION
+
+**IMPORTANT**: When creating documentation, testing examples, or session notes:
+
+1. **NEVER write actual credentials** - Even for "reference" or "testing" purposes
+2. **ALWAYS use placeholders**:
+   - ✅ `your_token_here`
+   - ✅ `REDACTED`
+   - ✅ `[YOUR_API_KEY]`
+   - ❌ Never actual API keys, tokens, passwords, or database URLs
+
+3. **Examples of what to avoid**:
+   - ❌ `C2S_TOKEN=4ecfcda34202be88...` (real token)
+   - ❌ `postgresql://user:password123@host/db` (real credentials)
+   - ❌ `WORK_API=zuZKCfxQqGMY...` (real API key)
+   - ✅ `C2S_TOKEN=your_c2s_token_here` (placeholder)
+   - ✅ `postgresql://user:password@host/db` (generic example)
+   - ✅ `WORK_API=your_work_api_key` (placeholder)
+
+4. **When documenting environment variables**:
+   - Reference `.env.example` (which has placeholders)
+   - Use instructions like "obtain from X dashboard"
+   - Never copy from actual `.env` file
+
+5. **Historical incident** (2025-11-23):
+   - Production credentials were accidentally documented in:
+     - `docs/security/SECURITY_CHECKLIST.md`
+     - `docs/session-notes/FINAL_STATUS.md`
+   - Required full git history rewrite to remove
+   - Forced credential rotation across all services
+   - **Lesson**: Even in "internal" docs, use placeholders only
+
+### Security Checklist for Documentation
+- [ ] Are you documenting configuration? Use `.env.example` patterns
+- [ ] Are you showing test results? Use fake/example data only
+- [ ] Are you creating setup guides? Use placeholder credentials
+- [ ] Are you documenting APIs? Use example keys like `your_api_key_here`
+
+**Remember**: Anything committed to git is permanent (even if later deleted). Always use placeholders.
+
+---
+
 ## ✅ CURRENT STATUS (2025-11-23)
 
 **Deployment**: Version 31 (optimized and deployed)  
