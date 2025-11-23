@@ -1,0 +1,433 @@
+openapi: 3.0.3
+info:
+  title: MBRAS C2S Enrichment API
+  description: |
+    Lead enrichment API that integrates with Work API, Diretrix, and Contact2Sale (C2S).
+
+    ## Features
+    - CPF lookup via phone/email (Diretrix)
+    - Customer data enrichment (Work API)
+    - Automated C2S message sending
+    - Deduplication caching
+    - Database storage with confidence scoring
+
+    ## Workflow
+    1. Receive lead from C2S webhook or API call
+    2. Find CPF from phone/email using Diretrix
+    3. Enrich customer data from Work API
+    4. Format enriched message
+    5. Send message back to C2S
+    6. Store enriched data in database
+
+  version: 0.1.0
+  contact:
+    name: MBRAS Team
+    url: https://mbras.com.br
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://mbras-c2s.fly.dev
+    description: Production server (Fly.io)
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: health
+    description: Health check endpoints
+  - name: enrichment
+    description: Lead enrichment endpoints
+  - name: work-api
+    description: Work API integration endpoints
+  - name: webhooks
+    description: Webhook endpoints (Google Ads, C2S)
+
+paths:
+  /health:
+    get:
+      tags:
+        - health
+      summary: Health check
+      description: Returns service health status
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /api/v1/c2s/enrich/{lead_id}:
+    post:
+      tags:
+        - enrichment
+      summary: Enrich C2S lead
+      description: |
+        Complete enrichment workflow for a C2S lead:
+        1. Fetch lead from C2S
+        2. Find CPF via Diretrix (phone/email lookup)
+        3. Enrich with Work API
+        4. Send enriched message to C2S
+        5. Store in database
+      operationId: enrichLead
+      parameters:
+        - name: lead_id
+          in: path
+          required: true
+          description: C2S lead ID (MD5 hash)
+          schema:
+            type: string
+            example: bf1a88eaa4ab34b01a257536563fb42b
+      responses:
+        '200':
+          description: Lead enriched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentResponse'
+        '404':
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: External API error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/leads/process:
+    get:
+      tags:
+        - enrichment
+      summary: Process lead (Make.com integration)
+      description: Trigger enrichment for a lead (used by Make.com scenarios)
+      operationId: processLead
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: C2S lead ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lead processing triggered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentResponse'
+
+  /api/v1/work/modules/all:
+    get:
+      tags:
+        - work-api
+      summary: Fetch all Work API modules
+      description: Fetch complete customer data from Work API (all modules)
+      operationId: getWorkApiModules
+      parameters:
+        - name: documento
+          in: query
+          required: true
+          description: CPF (11 digits)
+          schema:
+            type: string
+            pattern: '^\d{11}$'
+            example: '12345678901'
+      responses:
+        '200':
+          description: Customer data retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkApiResponse'
+        '400':
+          description: Invalid CPF
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/work/modules/{module}:
+    get:
+      tags:
+        - work-api
+      summary: Fetch specific Work API module
+      description: Fetch a specific module from Work API
+      operationId: getWorkApiModule
+      parameters:
+        - name: module
+          in: path
+          required: true
+          description: Module name (e.g., cpf, emails, phones)
+          schema:
+            type: string
+            enum: [cpf, emails, telefones, enderecos, empresas]
+        - name: documento
+          in: query
+          required: true
+          description: CPF or other document
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Module data retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/v1/work/modules/cep:
+    get:
+      tags:
+        - work-api
+      summary: Lookup people by CEP
+      description: Find people living in a specific CEP (zip code)
+      operationId: getWorkApiCep
+      parameters:
+        - name: documento
+          in: query
+          required: true
+          description: CEP (8 digits, with or without hyphen)
+          schema:
+            type: string
+            pattern: '^\d{5}-?\d{3}$'
+            example: '05676-120'
+      responses:
+        '200':
+          description: List of people in CEP
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /api/v1/webhook/google-ads:
+    post:
+      tags:
+        - webhooks
+      summary: Google Ads Lead Form webhook
+      description: |
+        Receive lead from Google Ads Lead Form Extension.
+
+        Workflow:
+        1. Validate webhook signature (google_key)
+        2. Extract lead data (name, email, phone, CPF)
+        3. Create lead in C2S
+        4. Trigger enrichment workflow
+      operationId: googleAdsWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleAdsWebhook'
+      responses:
+        '200':
+          description: Webhook received and processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  lead_id:
+                    type: string
+                  enriched:
+                    type: boolean
+        '400':
+          description: Invalid webhook payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    EnrichmentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        lead_id:
+          type: string
+          example: bf1a88eaa4ab34b01a257536563fb42b
+        enriched:
+          type: boolean
+          example: true
+        cpfs_enriched:
+          type: array
+          items:
+            type: string
+          example: ['12345678901']
+        same_person:
+          type: boolean
+          description: Whether phone and email belong to the same person
+          example: true
+        message_sent:
+          type: boolean
+          example: true
+        stored_in_db:
+          type: integer
+          description: Number of entities stored
+          example: 1
+        entity_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          example: ['550e8400-e29b-41d4-a716-446655440000']
+
+    WorkApiResponse:
+      type: object
+      properties:
+        DadosBasicos:
+          type: object
+          properties:
+            nome:
+              type: string
+              example: João da Silva
+            cpf:
+              type: string
+              example: '12345678901'
+            dataNascimento:
+              type: string
+              example: '01/01/1990'
+            sexo:
+              type: string
+              example: M - MASCULINO
+            mae:
+              type: string
+              example: Maria da Silva
+        DadosEconomicos:
+          type: object
+          properties:
+            renda:
+              type: string
+              example: R$ 5.000,00 - R$ 10.000,00
+            score:
+              type: object
+        emails:
+          type: array
+          items:
+            type: object
+            properties:
+              email:
+                type: string
+              prioridade:
+                type: string
+        telefones:
+          type: array
+          items:
+            type: object
+            properties:
+              telefone:
+                type: string
+              tipo:
+                type: string
+              whatsapp:
+                type: string
+                enum: [SIM, NAO]
+        enderecos:
+          type: array
+          items:
+            type: object
+            properties:
+              logradouro:
+                type: string
+              numero:
+                type: string
+              bairro:
+                type: string
+              cidade:
+                type: string
+              uf:
+                type: string
+              cep:
+                type: string
+
+    GoogleAdsWebhook:
+      type: object
+      required:
+        - lead_id
+        - google_key
+        - form_id
+        - campaign_id
+        - user_column_data
+      properties:
+        lead_id:
+          type: string
+          description: Unique lead identifier
+          example: abc123def456
+        api_version:
+          type: string
+          example: v1
+        form_id:
+          type: integer
+          format: int64
+          example: 123456789
+        campaign_id:
+          type: integer
+          format: int64
+          example: 987654321
+        gcl_id:
+          type: string
+          description: Google Click ID for conversion tracking
+          example: EAIaIQobChMI...
+        google_key:
+          type: string
+          description: Webhook verification key
+          example: your_google_key_here
+        is_test:
+          type: boolean
+          example: false
+        user_column_data:
+          type: array
+          items:
+            type: object
+            properties:
+              column_id:
+                type: string
+                enum: [FULL_NAME, EMAIL, PHONE_NUMBER, CPF]
+              column_name:
+                type: string
+              string_value:
+                type: string
+          example:
+            - column_id: FULL_NAME
+              column_name: Nome Completo
+              string_value: João Silva
+            - column_id: EMAIL
+              column_name: E-mail
+              string_value: joao@example.com
+            - column_id: PHONE_NUMBER
+              column_name: Telefone
+              string_value: '11987654321'
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Lead not found
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: C2S API token (for internal endpoints)
+
+security: []
