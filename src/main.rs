@@ -179,9 +179,8 @@ async fn main() -> anyhow::Result<()> {
             .unwrap(),
     );
 
-    // Build router with security layers
-    let app = Router::new()
-        .route("/health", get(handlers::health))
+    // Build protected routes with security layers
+    let protected_routes = Router::new()
         // API Documentation
         .route("/docs", get(serve_swagger_ui))
         .route("/api-docs/openapi.yml", get(serve_openapi_spec))
@@ -209,9 +208,6 @@ async fn main() -> anyhow::Result<()> {
             "/api/v1/webhooks/google-ads",
             post(google_ads_handler::google_ads_webhook_handler),
         )
-        .with_state(app_state)
-        .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive())
         .layer(
             ServiceBuilder::new()
                 // Request size limit: 5MB max payload (prevents memory exhaustion)
@@ -221,6 +217,14 @@ async fn main() -> anyhow::Result<()> {
                     config: governor_conf,
                 }),
         );
+
+    // Build final app with health check (bypasses rate limiting for Fly.io)
+    let app = Router::new()
+        .route("/health", get(handlers::health))
+        .merge(protected_routes)
+        .with_state(app_state)
+        .layer(TraceLayer::new_for_http())
+        .layer(CorsLayer::permissive());
 
     // Start server
     let addr = format!("0.0.0.0:{}", config.port);
