@@ -30,6 +30,9 @@ WORKDIR /app
 # Copy the binary from builder
 COPY --from=builder /app/target/release/rust-c2s-api /app/rust-c2s-api
 
+# Copy OpenAPI specification
+COPY openapi.yml /app/openapi.yml
+
 # Expose port
 EXPOSE 8080
 
