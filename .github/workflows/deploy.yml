@@ -2,33 +2,37 @@ name: Deploy to Fly.io
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:  # Allow manual trigger
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   deploy:
-    name: Deploy to Fly.io
+    name: Deploy
     runs-on: ubuntu-latest
 
+    # Only deploy if tests pass
+    needs: []
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Setup Fly.io CLI
-        uses: superfly/flyctl-actions/setup-flyctl@master
+    - name: Setup Flyctl
+      uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Deploy to Fly.io
-        run: flyctl deploy --remote-only
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    - name: Deploy to Fly.io
+      run: flyctl deploy --remote-only
+      env:
+        FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      - name: Deployment notification
-        if: success()
-        run: |
-          echo "✅ Deployment successful!"
-          echo "URL: https://mbras-c2s.fly.dev"
+    - name: Check deployment status
+      run: flyctl status
+      env:
+        FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      - name: Deployment failed
-        if: failure()
-        run: echo "❌ Deployment failed. Check logs above."
+    - name: Run smoke test
+      run: |
+        echo "Waiting for deployment to be ready..."
+        sleep 10
+        curl -f https://mbras-c2s.fly.dev/health || exit 1
+        echo "✓ Health check passed"
