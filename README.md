@@ -256,15 +256,23 @@ rust-c2s-api/
 
 **Core Tables**:
 - `core.parties` - Golden record (1.5M+ records)
+  - **Note**: Intentionally allows duplicate CPFs to track enrichment history over time
+  - Each record has `enriched_at` timestamp and confidence scores
+  - Query for most recent or highest quality record as needed
 - `core.people` - Person-specific attributes (1.1M+)
 - `core.companies` - Company-specific attributes (412K+)
 - `core.party_contacts` - Unified contacts (email/phone/whatsapp)
-- `core.party_enrichments` - Enrichment tracking
+- `core.party_enrichments` - Enrichment tracking with confidence scores
 - `core.real_estate_properties` - Property ownership
 
 **Analytics Layer**:
 - `core.mv_party_analytics` - Base analytics materialized view
 - `analytics.mv_mkt_lead_star` - Marketing star schema
+
+**Design Philosophy**:
+- Temporal tracking: Data quality improves over time
+- No UNIQUE constraint on CPF: Preserves enrichment history
+- Confidence scoring: Address quality ranges from 40% (family member) to 90% (current residence)
 
 See [DATABASE_SCHEMA_REPORT_FINAL.md](docs/database/DATABASE_SCHEMA_REPORT_FINAL.md) for complete details.
 

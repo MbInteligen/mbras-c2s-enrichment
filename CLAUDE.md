@@ -571,9 +571,45 @@ fly secrets set DIRETRIX_PASS="..."
 10. ✅ Updated README with 100/100 achievements and Swagger UI
 11. ✅ Updated CLAUDE.md with latest context
 
-### Known Issues
-- ⚠️ Database has no UNIQUE constraint on `cpf_cnpj` (allows duplicate entries by design)
-- ⚠️ In-memory cache won't work with multiple instances (need Redis for horizontal scaling)
+### Design Decisions & Considerations
+
+#### CPF Duplicates (Intentional Design)
+**Status**: ✅ Working as designed
+
+The database **intentionally** allows duplicate CPF entries in `core.parties`:
+
+**Why?**
+1. **Enrichment History**: Track how data quality improves over time
+2. **Multiple Contexts**: Same person may appear in different relationships (customer, lead, contact)
+3. **Data Quality Evolution**: Newer records may have better confidence scores or more complete information
+4. **Temporal Tracking**: Each record has `enriched_at` timestamp showing when data was captured
+
+**How to Query**:
+```sql
+-- Get most recent enrichment for a CPF
+SELECT * FROM core.parties 
+WHERE national_id = '12345678900' 
+ORDER BY enriched_at DESC LIMIT 1;
+
+-- Get highest quality record
+SELECT * FROM core.parties p
+JOIN core.party_enrichments pe ON p.party_id = pe.party_id
+WHERE p.national_id = '12345678900'
+ORDER BY pe.confidence_score DESC LIMIT 1;
+```
+
+**Alternative Approaches Considered**:
+- ❌ UNIQUE constraint: Would lose enrichment history
+- ❌ UPDATE existing: Would lose temporal tracking
+- ✅ Current design: Best for CRM/enrichment use cases
+
+#### Horizontal Scaling Limitation
+**Status**: ⚠️ Single-instance only
+
+- **Current**: In-memory caches (moka) work for single Fly.io instance
+- **Limitation**: Multiple instances would have separate caches (cache inconsistency)
+- **Solution**: Migrate to Redis for distributed caching (see `docs/architecture/PLAN_WEBHOOK_REDIS.md`)
+- **Impact**: Not critical for current traffic levels (<100 req/min)
 
 ---
 
