@@ -1,3 +1,5 @@
+//! Migration script to move data from legacy `core.entities` to new `core.parties` structure.
+
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::FromRow;
@@ -34,6 +36,11 @@ struct LegacyEmail {
     is_primary: bool,
 }
 
+/// Main entry point for the migration script.
+///
+/// 1. Fetches all legacy entities.
+/// 2. Checks for existence in the new `parties` table.
+/// 3. Migrates data to `parties`, `people`, `party_contacts`.
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();

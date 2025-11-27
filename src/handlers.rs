@@ -15,24 +15,34 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
+/// Shared application state injected into handlers.
 #[derive(Clone)]
 pub struct AppState {
+    /// Database connection pool.
     pub db: PgPool,
+    /// Application configuration.
     pub config: Config,
-    pub gateway_client: Option<C2sGatewayClient>, // Optional gateway client
-    /// Global deduplication cache to prevent processing same CPF within short time window
+    /// Client for communicating with C2S API (optional).
+    pub gateway_client: Option<C2sGatewayClient>,
+    /// Global deduplication cache to prevent processing same CPF within short time window.
     pub recent_cpf_cache: Cache<String, i64>,
-    /// Lead-level deduplication cache to prevent concurrent processing of same lead_id
+    /// Lead-level deduplication cache to prevent concurrent processing of same lead_id.
     pub processing_leads_cache: Cache<String, i64>,
-    // Cache for contact (phone/email) -> Existing Enrichment Data
-    // Key: phone or email, Value: Option<ExistingEnrichment> (None means checked and not found)
+    /// Cache for contact (phone/email) -> Existing Enrichment Data.
+    /// Key: phone or email, Value: Option<ExistingEnrichment> (None means checked and not found).
     pub contact_to_cpf_cache: Cache<String, Option<crate::enrichment::ExistingEnrichment>>,
-    /// Work API response cache (1 hour TTL) to reduce external API calls
-    // Key: "all:{cpf}" or "module:{module}:{cpf}" or "cep:{cep}", Value: JSON response string
+    /// Work API response cache (1 hour TTL) to reduce external API calls.
+    /// Key: "all:{cpf}" or "module:{module}:{cpf}" or "cep:{cep}", Value: JSON response string.
     pub work_api_cache: Cache<String, String>,
 }
 
-/// Health check endpoint
+/// Health check endpoint.
+///
+/// Returns the service status, version, and health information.
+///
+/// # Returns
+///
+/// * `(StatusCode, Json<serde_json::Value>)` - HTTP 200 OK with health status JSON.
 pub async fn health() -> (StatusCode, Json<serde_json::Value>) {
     (
         StatusCode::OK,
@@ -45,8 +55,18 @@ pub async fn health() -> (StatusCode, Json<serde_json::Value>) {
 }
 
 /// GET /api/v1/contributor/customer
-/// Main endpoint that mimics ibvi-api's /contributor/customer
-/// This is what mbras-c2s will call
+///
+/// Main endpoint that mimics ibvi-api's /contributor/customer.
+/// This is what mbras-c2s will call to get customer information.
+///
+/// # Arguments
+///
+/// * `state` - The application state.
+/// * `params` - Query parameters containing customer identifiers (cpf, email, phone, or name).
+///
+/// # Returns
+///
+/// * `Result<Json<UnifiedCustomerResponse>, AppError>` - The unified customer response or an error.
 pub async fn get_customer(
     State(state): State<Arc<AppState>>,
     Query(params): Query<CustomerQueryParams>,
@@ -77,7 +97,17 @@ pub async fn get_customer(
 }
 
 /// GET /api/v1/customers/:id
-/// Get customer by UUID
+///
+/// Retrieves a customer by their internal UUID.
+///
+/// # Arguments
+///
+/// * `state` - The application state.
+/// * `id` - The UUID of the customer.
+///
+/// # Returns
+///
+/// * `Result<Json<EnrichedCustomerData>, AppError>` - The enriched customer data or an error.
 pub async fn get_customer_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
@@ -129,7 +159,17 @@ pub async fn get_customer_by_id(
 }
 
 /// POST /api/v1/enrich
-/// Enrich customer data via Work API
+///
+/// Enriches customer data via Work API based on provided parameters.
+///
+/// # Arguments
+///
+/// * `state` - The application state.
+/// * `params` - JSON body containing query parameters (cpf, email, phone, or name).
+///
+/// # Returns
+///
+/// * `Result<Json<UnifiedCustomerResponse>, AppError>` - The unified customer response or an error.
 pub async fn enrich_customer(
     State(state): State<Arc<AppState>>,
     Json(params): Json<CustomerQueryParams>,
@@ -143,7 +183,18 @@ pub async fn enrich_customer(
 }
 
 /// GET /api/v1/work/modules/all
-/// Fetch all Work API modules for a given document
+///
+/// Fetches all Work API modules for a given document (CPF).
+/// Caches the response for 1 hour.
+///
+/// # Arguments
+///
+/// * `state` - The application state.
+/// * `params` - Query parameters containing the document (cpf).
+///
+/// # Returns
+///
+/// * `Result<Json<crate::models::WorkApiCompleteResponse>, AppError>` - The Work API response or an error.
 pub async fn fetch_all_modules(
     State(state): State<Arc<AppState>>,
     Query(params): Query<serde_json::Value>,
@@ -198,7 +249,19 @@ pub async fn fetch_all_modules(
 }
 
 /// GET /api/v1/work/modules/{module}
-/// Fetch specific Work API module
+///
+/// Fetches a specific Work API module for a given document.
+/// Caches the response for 1 hour.
+///
+/// # Arguments
+///
+/// * `state` - The application state.
+/// * `module` - The name of the module to fetch.
+/// * `params` - Query parameters containing the document (cpf).
+///
+/// # Returns
+///
+/// * `Result<Json<serde_json::Value>, AppError>` - The module data or an error.
 pub async fn fetch_module(
     State(state): State<Arc<AppState>>,
     Path(module): Path<String>,
@@ -256,7 +319,18 @@ pub async fn fetch_module(
 }
 
 /// POST /api/v1/leads
-/// Process lead (similar to mbras-c2s ProcessLead flow)
+///
+/// Processes a lead by enriching it with available data and storing it in the database.
+/// Similar to the mbras-c2s ProcessLead flow.
+///
+/// # Arguments
+///
+/// * `state` - The application state.
+/// * `payload` - The lead data to process.
+///
+/// # Returns
+///
+/// * `Result<Json<LeadResponse>, AppError>` - The processing result or an error.
 pub async fn process_lead(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<LeadRequest>,
@@ -363,10 +437,20 @@ pub async fn process_lead(
 }
 
 /// POST /api/v1/c2s/enrich/:lead_id
+///
 /// Complete C2S integration flow:
 /// 1. Fetch lead from C2S
 /// 2. Enrich with Work API
 /// 3. Send enriched data back to C2S
+///
+/// # Arguments
+///
+/// * `state` - The application state.
+/// * `lead_id` - The ID of the lead to enrich.
+///
+/// # Returns
+///
+/// * `Result<Json<serde_json::Value>, AppError>` - The result of the enrichment flow or an error.
 pub async fn c2s_enrich_lead(
     State(state): State<Arc<AppState>>,
     Path(lead_id): Path<String>,
@@ -569,8 +653,17 @@ pub async fn c2s_enrich_lead(
     })))
 }
 
-/// Helper function to multiply currency values in a range string
+/// Helper function to multiply currency values in a range string.
 /// Example: "De R$ 1630 até R$ 4082" -> "De R$ 3097.00 até R$ 7755.80"
+///
+/// # Arguments
+///
+/// * `range_str` - The input string containing currency ranges.
+/// * `multiplier` - The factor to multiply the currency values by.
+///
+/// # Returns
+///
+/// * `String` - The string with adjusted currency values.
 fn multiply_range_values(range_str: &str, multiplier: f64) -> String {
     use regex::Regex;
 
@@ -590,7 +683,16 @@ fn multiply_range_values(range_str: &str, multiplier: f64) -> String {
     result.to_string()
 }
 
-/// Format enriched Work API data into a readable message for C2S
+/// Format enriched Work API data into a readable message for C2S.
+///
+/// # Arguments
+///
+/// * `customer_name` - The name of the customer.
+/// * `work_data` - The enriched data from Work API.
+///
+/// # Returns
+///
+/// * `String` - The formatted message.
 pub fn format_enriched_message(customer_name: &str, work_data: &WorkApiCompleteResponse) -> String {
     tracing::info!("Formatting message for: {}", customer_name);
     tracing::info!(
@@ -757,8 +859,18 @@ pub fn format_enriched_message(customer_name: &str, work_data: &WorkApiCompleteR
 }
 
 /// GET /api/v1/leads/process?id={lead_id}
-/// Simple trigger endpoint for Make.com integration
-/// Accepts lead ID, fetches from C2S, and processes using existing enrichment flow
+///
+/// Simple trigger endpoint for Make.com integration.
+/// Accepts lead ID, fetches from C2S, and processes using existing enrichment flow.
+///
+/// # Arguments
+///
+/// * `state` - The application state.
+/// * `params` - Query parameters containing the lead ID.
+///
+/// # Returns
+///
+/// * `Result<Json<serde_json::Value>, AppError>` - The processing result or an error.
 pub async fn trigger_lead_processing(
     State(state): State<Arc<AppState>>,
     Query(params): Query<serde_json::Value>,

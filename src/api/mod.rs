@@ -1,4 +1,7 @@
-// Thin namespace wrapper for API-layer components
+//! API layer components.
+//!
+//! This module exports the API handlers.
+
 pub mod handlers {
     pub use crate::handlers::*;
 }

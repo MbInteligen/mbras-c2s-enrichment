@@ -1,7 +1,12 @@
+//! Utility to inspect the database schema and print table structures.
+
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
 
+/// Main entry point for the schema inspection utility.
+///
+/// Connects to the database and lists columns for tables matching specific criteria.
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();

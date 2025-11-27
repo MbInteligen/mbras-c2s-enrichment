@@ -11,13 +11,23 @@ use serde_json::Value;
 use sqlx::PgPool;
 use std::sync::Arc;
 
-/// C2S Webhook Handler
+/// C2S Webhook Handler.
 ///
 /// Receives webhook events from Contact2Sale (C2S) when leads are created/updated.
 /// Validates the webhook secret, deduplicates events, and triggers background enrichment.
 ///
-/// Expected payload: Single event object OR array of events
-/// Authentication: X-Webhook-Token header must match WEBHOOK_SECRET env var
+/// Expected payload: Single event object OR array of events.
+/// Authentication: X-Webhook-Token header must match WEBHOOK_SECRET env var.
+///
+/// # Arguments
+///
+/// * `state` - The application state.
+/// * `headers` - HTTP headers (used for authentication).
+/// * `payload` - JSON body containing the webhook payload.
+///
+/// # Returns
+///
+/// * `Result<(StatusCode, Json<WebhookResponse>), AppError>` - The response or an error.
 pub async fn c2s_webhook(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -72,7 +82,7 @@ pub async fn c2s_webhook(
     ))
 }
 
-/// Validate webhook secret from X-Webhook-Token header
+/// Validates the webhook secret from the X-Webhook-Token header.
 fn validate_webhook_secret(state: &AppState, headers: &HeaderMap) -> Result<(), AppError> {
     // If no secret is configured, skip validation (warn was already logged at startup)
     let Some(ref expected_secret) = state.config.webhook_secret else {
@@ -103,8 +113,7 @@ fn validate_webhook_secret(state: &AppState, headers: &HeaderMap) -> Result<(), 
     Ok(())
 }
 
-/// Constant-time string comparison (basic implementation)
-/// For production, consider using a crypto library like `subtle`
+/// Constant-time string comparison to prevent timing attacks.
 fn constant_time_compare(a: &str, b: &str) -> bool {
     if a.len() != b.len() {
         return false;
@@ -123,7 +132,9 @@ enum ProcessResult {
     Duplicate,
 }
 
-/// Parse timestamp string to DateTime<Utc>
+/// Parses a timestamp string to `DateTime<Utc>`.
+///
+/// Tries multiple formats: ISO 8601/RFC 3339, custom format, and naive datetime (assuming UTC).
 fn parse_timestamp(timestamp_str: &str) -> Result<DateTime<Utc>, AppError> {
     // Try ISO 8601 / RFC3339 format first (standard)
     chrono::DateTime::parse_from_rfc3339(timestamp_str)
@@ -146,7 +157,11 @@ fn parse_timestamp(timestamp_str: &str) -> Result<DateTime<Utc>, AppError> {
         })
 }
 
-/// Process a single webhook event
+/// Processes a single webhook event.
+///
+/// 1. Checks for duplication.
+/// 2. Stores the receipt.
+/// 3. Spawns a background enrichment job.
 async fn process_webhook_event(
     state: &Arc<AppState>,
     event: WebhookEvent,
@@ -193,7 +208,7 @@ async fn process_webhook_event(
     Ok(ProcessResult::Processed)
 }
 
-/// Check if webhook event was already processed (idempotency check)
+/// Checks if a webhook event was already processed (idempotency check).
 async fn already_processed(
     db: &PgPool,
     lead_id: &str,
@@ -215,7 +230,7 @@ async fn already_processed(
     Ok(exists)
 }
 
-/// Store webhook receipt in database
+/// Stores the webhook receipt in the database.
 async fn store_webhook_receipt(
     db: &PgPool,
     lead_id: &str,
@@ -250,16 +265,16 @@ async fn store_webhook_receipt(
 /// 5. Store in database
 /// 6. Send enriched message back to C2S
 /// 7. Mark webhook event as 'completed' or 'failed'
-/// Spawn background enrichment job (non-blocking)
+/// Spawns a background enrichment job (non-blocking).
 ///
 /// This function spawns a tokio task that will:
-/// 1. Mark webhook event as 'processing'
-/// 2. Fetch full lead data from C2S
-/// 3. Extract CPF from customer data
-/// 4. Enrich via Work API
-/// 5. Store in database
-/// 6. Send enriched message back to C2S
-/// 7. Mark webhook event as 'completed' or 'failed'
+/// 1. Mark webhook event as 'processing'.
+/// 2. Fetch full lead data from C2S.
+/// 3. Extract CPF from customer data.
+/// 4. Enrich via Work API.
+/// 5. Store in database.
+/// 6. Send enriched message back to C2S.
+/// 7. Mark webhook event as 'completed' or 'failed'.
 fn spawn_enrichment_job(
     state: Arc<AppState>,
     lead_id: String,
@@ -295,7 +310,7 @@ fn spawn_enrichment_job(
     });
 }
 
-/// Mark webhook event as processing (scoped by lead_id AND updated_at)
+/// Marks a webhook event as processing (scoped by lead_id AND updated_at).
 async fn mark_webhook_processing(
     db: &PgPool,
     lead_id: &str,
@@ -324,7 +339,7 @@ async fn mark_webhook_processing(
     Ok(())
 }
 
-/// Mark webhook event as completed (scoped by lead_id AND updated_at)
+/// Marks a webhook event as completed (scoped by lead_id AND updated_at).
 async fn mark_webhook_completed(
     db: &PgPool,
     lead_id: &str,
@@ -353,7 +368,7 @@ async fn mark_webhook_completed(
     Ok(())
 }
 
-/// Mark webhook event as failed (scoped by lead_id AND updated_at)
+/// Marks a webhook event as failed (scoped by lead_id AND updated_at).
 async fn mark_webhook_failed(
     db: &PgPool,
     lead_id: &str,
@@ -384,14 +399,14 @@ async fn mark_webhook_failed(
     Ok(())
 }
 
-/// Full enrichment workflow for webhook events
+/// Executes the full enrichment workflow for webhook events.
 ///
 /// This function orchestrates the complete enrichment process:
-/// 1. Extract customer data from webhook
-/// 2. Find CPF via Diretrix (phone/email lookup)
-/// 3. Enrich with Work API
-/// 4. Format and send message to C2S
-/// 5. Store in database
+/// 1. Extract customer data from webhook.
+/// 2. Find CPF via Diretrix (phone/email lookup).
+/// 3. Enrich with Work API.
+/// 4. Format and send message to C2S.
+/// 5. Store in database.
 async fn enrich_lead_workflow(
     state: &Arc<AppState>,
     lead_id: &str,

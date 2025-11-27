@@ -33,7 +33,14 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use crate::config::Config;
 use crate::db::Database;
 
-/// Serves the OpenAPI specification YAML file
+/// Serves the OpenAPI specification YAML file.
+///
+/// This endpoint reads the `openapi.yml` file from the filesystem and serves it
+/// with the appropriate content type. If the file is not found, it returns a 404 error.
+///
+/// # Returns
+///
+/// * `impl IntoResponse` - The HTTP response containing the OpenAPI YAML content or an error message.
 async fn serve_openapi_spec() -> impl IntoResponse {
     match tokio::fs::read_to_string("openapi.yml").await {
         Ok(content) => (
@@ -50,7 +57,14 @@ async fn serve_openapi_spec() -> impl IntoResponse {
     }
 }
 
-/// Serves the Swagger UI HTML page
+/// Serves the Swagger UI HTML page.
+///
+/// This endpoint returns an HTML page that embeds the Swagger UI, configured to
+/// load the OpenAPI specification served by `serve_openapi_spec`.
+///
+/// # Returns
+///
+/// * `impl IntoResponse` - The HTTP response containing the Swagger UI HTML.
 async fn serve_swagger_ui() -> impl IntoResponse {
     let html = r#"
 <!DOCTYPE html>
@@ -92,6 +106,21 @@ async fn serve_swagger_ui() -> impl IntoResponse {
     )
 }
 
+/// Main entry point for the application.
+///
+/// This function initializes the application, including:
+/// - Logging and tracing.
+/// - Configuration loading.
+/// - Database connection.
+/// - Caches (CPF, Lead, Contact, Work API).
+/// - External API clients.
+/// - HTTP routes and middleware (CORS, Rate Limiting).
+///
+/// It then starts the Axum server.
+///
+/// # Returns
+///
+/// * `anyhow::Result<()>` - Ok if the server runs successfully, or an error if initialization fails.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize tracing

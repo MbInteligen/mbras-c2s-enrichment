@@ -1,4 +1,5 @@
-// Domain-layer modules and shared errors/models
+//! Core business logic and domain entities.
+
 pub mod enrichment {
     pub use crate::enrichment::*;
 }

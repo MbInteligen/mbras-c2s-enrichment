@@ -15,35 +15,49 @@ use crate::{
     services::{self, WorkApiService},
 };
 
-/// Query parameters for Google Ads webhook verification
+/// Query parameters for Google Ads webhook verification.
 #[derive(Debug, Deserialize)]
 pub struct GoogleAdsWebhookQuery {
-    /// Google's webhook verification key (required for security)
+    /// Google's webhook verification key (required for security).
     google_key: Option<String>,
 }
 
-/// Response for Google Ads webhook
+/// Response for Google Ads webhook.
 #[derive(Debug, Serialize)]
 pub struct GoogleAdsWebhookResponse {
+    /// Success status.
     pub success: bool,
+    /// Response message.
     pub message: String,
+    /// ID of the lead in Google Ads.
     pub lead_id: Option<String>,
+    /// ID of the created lead in C2S.
     pub c2s_lead_id: Option<String>,
 }
 
-/// Google Ads webhook handler
+/// Google Ads webhook handler.
 ///
 /// Flow:
-/// 1. Validate google_key (mandatory)
-/// 2. Check deduplication (google_ads_leads.google_lead_id unique constraint)
-/// 3. Extract contact info (name, phone, email)
-/// 4. Validate and normalize phone/email
-/// 5. Inline enrichment: Diretrix → Work API (if possible)
-/// 6. Format complete description (Google Ads context + enrichment)
-/// 7. Create lead in C2S via gateway (single API call)
-/// 8. Store tracking record in database
+/// 1. Validate google_key (mandatory).
+/// 2. Check deduplication (google_ads_leads.google_lead_id unique constraint).
+/// 3. Extract contact info (name, phone, email).
+/// 4. Validate and normalize phone/email.
+/// 5. Inline enrichment: Diretrix → Work API (if possible).
+/// 6. Format complete description (Google Ads context + enrichment).
+/// 7. Create lead in C2S via gateway (single API call).
+/// 8. Store tracking record in database.
 ///
-/// Fallback: If enrichment fails, still create lead with warning
+/// Fallback: If enrichment fails, still create lead with warning.
+///
+/// # Arguments
+///
+/// * `app_state` - The application state.
+/// * `query` - Query parameters containing the verification key.
+/// * `payload` - JSON body containing the Google Ads webhook payload.
+///
+/// # Returns
+///
+/// * `Result<impl IntoResponse, AppError>` - The response or an error.
 pub async fn google_ads_webhook_handler(
     State(app_state): State<std::sync::Arc<crate::handlers::AppState>>,
     Query(query): Query<GoogleAdsWebhookQuery>,
@@ -181,7 +195,7 @@ pub async fn google_ads_webhook_handler(
     ))
 }
 
-/// Validate Google webhook verification key
+/// Validates the Google webhook verification key.
 fn validate_google_key(config: &Config, provided_key: &str) -> Result<(), AppError> {
     let expected_key = config.google_ads_webhook_key.as_ref().ok_or_else(|| {
         AppError::InternalError("GOOGLE_ADS_WEBHOOK_KEY not configured (required)".to_string())
@@ -198,7 +212,7 @@ fn validate_google_key(config: &Config, provided_key: &str) -> Result<(), AppErr
     Ok(())
 }
 
-/// Check if lead already processed (deduplication)
+/// Checks if the lead has already been processed (deduplication).
 async fn is_duplicate_lead(db: &PgPool, google_lead_id: &str) -> Result<bool, AppError> {
     let exists = sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS(SELECT 1 FROM google_ads_leads WHERE google_lead_id = $1)",
@@ -210,7 +224,7 @@ async fn is_duplicate_lead(db: &PgPool, google_lead_id: &str) -> Result<bool, Ap
     Ok(exists)
 }
 
-/// Perform inline enrichment: Diretrix → Work API
+/// Performs inline enrichment: Diretrix → Work API.
 async fn perform_inline_enrichment(
     state: &std::sync::Arc<crate::handlers::AppState>,
     cpf_from_form: Option<&str>,
@@ -346,7 +360,7 @@ async fn perform_inline_enrichment(
     }
 }
 
-/// Store Google Ads lead tracking record
+/// Stores the Google Ads lead tracking record in the database.
 async fn store_google_ads_lead(
     db: &PgPool,
     payload: &GoogleAdsWebhookPayload,

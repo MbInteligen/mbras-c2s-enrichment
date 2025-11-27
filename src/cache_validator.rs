@@ -15,65 +15,81 @@ use sha2::{Digest, Sha256};
 /// - Validates on retrieval to detect tampering
 /// - Falls back to fresh fetch if validation fails
 
-/// Wrapper for cached data with integrity validation
+/// Wrapper for cached data with integrity validation.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ValidatedCacheEntry {
-    /// The actual cached data (JSON string)
+    /// The actual cached data (JSON string).
     pub data: String,
-    /// SHA-256 checksum of the data (hex encoded)
+    /// SHA-256 checksum of the data (hex encoded).
     pub checksum: String,
 }
 
 impl ValidatedCacheEntry {
-    /// Creates a new validated cache entry with computed checksum
+    /// Creates a new validated cache entry with computed checksum.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The data string to cache.
     ///
     /// # Example
     ///
     /// ```rust
+    /// use rust_c2s_api::cache_validator::ValidatedCacheEntry;
     /// let entry = ValidatedCacheEntry::new(r#"{"name": "John"}"#.to_string());
-    /// cache.insert(key, entry.serialize()).await;
+    /// // cache.insert(key, entry.serialize()).await;
     /// ```
     pub fn new(data: String) -> Self {
         let checksum = Self::compute_checksum(&data);
         Self { data, checksum }
     }
 
-    /// Computes SHA-256 checksum of the data
+    /// Computes SHA-256 checksum of the data.
     fn compute_checksum(data: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(data.as_bytes());
         hex::encode(hasher.finalize())
     }
 
-    /// Validates the integrity of the cached data
+    /// Validates the integrity of the cached data.
     ///
-    /// Returns true if the checksum matches, false if tampered
+    /// # Returns
+    ///
+    /// * `bool` - `true` if the checksum matches, `false` if tampered.
     pub fn is_valid(&self) -> bool {
         let computed = Self::compute_checksum(&self.data);
         computed == self.checksum
     }
 
-    /// Serializes the entry for storage in cache
+    /// Serializes the entry for storage in cache.
     ///
-    /// Returns JSON string with both data and checksum
+    /// # Returns
+    ///
+    /// * `String` - JSON string with both data and checksum.
     pub fn serialize(&self) -> String {
         serde_json::to_string(self).unwrap_or_default()
     }
 
-    /// Deserializes and validates a cache entry
+    /// Deserializes and validates a cache entry.
     ///
-    /// Returns Some(data) if valid, None if corrupted or invalid JSON
+    /// # Arguments
+    ///
+    /// * `serialized` - The serialized cache entry string.
+    ///
+    /// # Returns
+    ///
+    /// * `Option<String>` - `Some(data)` if valid, `None` if corrupted or invalid JSON.
     ///
     /// # Example
     ///
     /// ```rust
-    /// if let Some(cached) = cache.get(&key).await {
-    ///     if let Some(valid_data) = ValidatedCacheEntry::deserialize_and_validate(&cached) {
-    ///         // Use valid_data safely
-    ///     } else {
-    ///         // Cache poisoned, refetch from source
-    ///     }
-    /// }
+    /// use rust_c2s_api::cache_validator::ValidatedCacheEntry;
+    /// // if let Some(cached) = cache.get(&key).await {
+    /// //     if let Some(valid_data) = ValidatedCacheEntry::deserialize_and_validate(&cached) {
+    /// //         // Use valid_data safely
+    /// //     } else {
+    /// //         // Cache poisoned, refetch from source
+    /// //     }
+    /// // }
     /// ```
     pub fn deserialize_and_validate(serialized: &str) -> Option<String> {
         let entry: ValidatedCacheEntry = serde_json::from_str(serialized).ok()?;

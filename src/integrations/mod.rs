@@ -1,4 +1,5 @@
-// External integrations (HTTP clients, webhooks, Google Ads, etc.)
+//! External service integrations.
+
 pub mod gateway_client {
     pub use crate::gateway_client::*;
 }

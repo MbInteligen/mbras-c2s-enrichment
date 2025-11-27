@@ -1,26 +1,35 @@
 use failsafe::{backoff, failure_policy, Config};
 use std::time::Duration;
 
-/// Creates a circuit breaker for database operations to prevent cascading failures
+/// Creates a circuit breaker for database operations to prevent cascading failures.
 ///
-/// Configuration:
-/// - Failure threshold: 5 consecutive failures triggers OPEN state
-/// - Backoff: Exponential backoff from 10s to 60s before attempting recovery
+/// # Configuration
 ///
-/// States:
-/// - CLOSED: Normal operation, requests pass through
-/// - OPEN: Too many failures, requests fail fast
-/// - HALF_OPEN: Testing if service recovered
+/// - **Failure threshold**: 5 consecutive failures triggers OPEN state.
+/// - **Backoff**: Exponential backoff from 10s to 60s before attempting recovery.
+///
+/// # States
+///
+/// - **CLOSED**: Normal operation, requests pass through.
+/// - **OPEN**: Too many failures, requests fail fast.
+/// - **HALF_OPEN**: Testing if service recovered.
 ///
 /// # Example
 ///
 /// ```rust
-/// let circuit_breaker = create_db_circuit_breaker();
+/// use rust_c2s_api::circuit_breaker::create_db_circuit_breaker;
+/// use failsafe::CircuitBreaker;
 ///
-/// let result = circuit_breaker.call(async {
-///     sqlx::query("SELECT * FROM users").fetch_all(&pool).await
-/// }).await;
+/// // let circuit_breaker = create_db_circuit_breaker();
+/// //
+/// // let result = circuit_breaker.call(async {
+/// //     sqlx::query("SELECT * FROM users").fetch_all(&pool).await
+/// // }).await;
 /// ```
+///
+/// # Returns
+///
+/// * `impl failsafe::CircuitBreaker` - The configured circuit breaker instance.
 pub fn create_db_circuit_breaker() -> impl failsafe::CircuitBreaker {
     let backoff_strategy = backoff::exponential(
         Duration::from_secs(10), // Initial delay
