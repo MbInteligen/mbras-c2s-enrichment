@@ -12,7 +12,7 @@ use crate::errors::{AppError, ResultExt};
 use crate::gateway_client::C2sGatewayClient;
 use crate::handlers::AppState;
 use crate::models::WorkApiCompleteResponse;
-use crate::services::{C2SService, DiretrixService, WorkApiService};
+use crate::services::{C2SService, DBaseService, DiretrixService, WorkApiService};
 use phonenumber::country::Id as CountryId;
 use phonenumber::Mode;
 use regex::Regex;
@@ -226,13 +226,14 @@ pub fn validate_br_phone(raw: &str) -> (bool, String) {
     }
 }
 
-/// Find CPF(s) from phone and/or email using Diretrix API
+/// Find CPF(s) from phone and/or email using Diretrix API with DBase fallback
 pub async fn find_cpf_via_diretrix(
     phone: Option<&str>,
     email: Option<&str>,
     config: &Config,
 ) -> Result<CpfLookupResult, AppError> {
     let diretrix_service = DiretrixService::new(config);
+    let dbase_service = DBaseService::new(config);
 
     // Validate and normalize phone before lookup
     let validated_phone = if let Some(phone_number) = phone {
@@ -271,18 +272,67 @@ pub async fn find_cpf_via_diretrix(
         None
     };
 
-    // Parallel lookup - search by phone AND email separately (only if validated)
-    let phone_lookup = if let Some(ref phone_number) = validated_phone {
-        diretrix_service.search_by_phone(phone_number).await.ok()
-    } else {
-        None
-    };
+    // Try DBase FIRST for phone lookup (primary source)
+    let mut phone_lookup: Option<Vec<crate::services::DiretrixPersonSearch>> = None;
 
+    if let Some(ref phone_number) = validated_phone {
+        tracing::info!("Step 1: Trying DBase first for phone lookup");
+        match dbase_service.search_by_phone(phone_number).await {
+            Ok(Some(dbase_data)) => {
+                if let Some(cpf) = dbase_data.cpf {
+                    tracing::info!("✓ DBase found CPF: {}", cpf);
+                    // Convert DBase response to Diretrix format for compatibility
+                    phone_lookup = Some(vec![crate::services::DiretrixPersonSearch {
+                        nome: dbase_data.nome.unwrap_or_default(),
+                        cpf,
+                    }]);
+                } else {
+                    tracing::info!("DBase returned data but no CPF, will try Diretrix");
+                }
+            }
+            Ok(None) => {
+                tracing::info!("DBase returned no data, will try Diretrix");
+            }
+            Err(e) => {
+                tracing::warn!("DBase lookup failed: {}, will try Diretrix", e);
+            }
+        }
+    }
+
+    // If DBase didn't find CPF, try Diretrix as fallback for phone
+    let should_try_diretrix =
+        phone_lookup.is_none() || phone_lookup.as_ref().map_or(false, |v| v.is_empty());
+
+    if should_try_diretrix && validated_phone.is_some() {
+        tracing::info!("Step 2: DBase phone lookup failed/empty, trying Diretrix fallback");
+        if let Some(ref phone_number) = validated_phone {
+            phone_lookup = diretrix_service.search_by_phone(phone_number).await.ok();
+            if let Some(ref results) = phone_lookup {
+                if !results.is_empty() {
+                    tracing::info!("✓ Diretrix fallback found {} result(s)", results.len());
+                }
+            }
+        }
+    }
+
+    // For email, still use Diretrix (DBase doesn't have email lookup)
     let email_lookup = if let Some(ref email_addr) = validated_email {
+        tracing::info!("Searching by email via Diretrix");
         diretrix_service.search_by_email(email_addr).await.ok()
     } else {
         None
     };
+
+    // Debug: Log final results
+    tracing::info!(
+        "Final lookup results - phone: {:?}, email: {:?}",
+        phone_lookup
+            .as_ref()
+            .map(|v| format!("{} results", v.len())),
+        email_lookup
+            .as_ref()
+            .map(|v| format!("{} results", v.len()))
+    );
 
     // Extract CPFs from both lookups
     let phone_cpf = phone_lookup.as_ref().and_then(|results| {

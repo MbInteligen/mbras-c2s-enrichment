@@ -1124,3 +1124,176 @@ impl DiretrixService {
         Ok(None)
     }
 }
+
+// ============ DBase API Integration ============
+
+pub struct DBaseService {
+    client: Client,
+    base_url: String,
+    api_key: String,
+}
+
+impl DBaseService {
+    pub fn new(config: &Config) -> Self {
+        Self {
+            client: Client::new(),
+            // Note: URL must have trailing slash per API spec
+            base_url: "https://app.dbase.com.br/sistema/consultas/Data-basebrasil-api2024/"
+                .to_string(),
+            api_key: config.dbase_key.clone(),
+        }
+    }
+
+    /// Search person by phone number using DBase API
+    ///
+    /// This is used as a fallback when Diretrix API is unavailable.
+    /// The DBase API accepts form data with:
+    /// - `consulta`: Query type (e.g., "telefone")
+    /// - `telefone`: Phone number to search
+    /// - `token`: API authentication token
+    ///
+    /// # Arguments
+    /// * `phone` - Phone number to search (can include country code, will be normalized)
+    ///
+    /// # Returns
+    /// * `Ok(Some(DBasePhoneResponse))` - Person data found
+    /// * `Ok(None)` - No data found or API error
+    /// * `Err(AppError)` - Request failed
+    ///
+    /// # Note
+    /// DBase API requires IP whitelisting. Contact DBase support to whitelist
+    /// the Fly.io server IPs: 149.248.222.160 (v4) and 2a09:8280:1::b0:e53:0 (v6)
+    pub async fn search_by_phone(
+        &self,
+        phone: &str,
+    ) -> Result<Option<crate::models::DBasePhoneResponse>, AppError> {
+        // Normalize phone number - remove non-digits
+        let phone_clean: String = phone.chars().filter(|c| c.is_ascii_digit()).collect();
+
+        // Remove country code if present (55 for Brazil)
+        let phone_normalized = if phone_clean.starts_with("55") && phone_clean.len() > 2 {
+            &phone_clean[2..]
+        } else {
+            &phone_clean
+        };
+
+        tracing::info!(
+            "DBase: Searching by phone: {} (normalized: {})",
+            phone,
+            phone_normalized
+        );
+
+        // Build form data - DBase API expects multipart form-data with:
+        // - consulta: type of query ("telefone")
+        // - telefone: the phone number
+        // - token: API key (NOT Bearer auth header)
+        let form = reqwest::multipart::Form::new()
+            .text("consulta", "telefone")
+            .text("telefone", phone_normalized.to_string())
+            .text("token", self.api_key.clone());
+
+        let response = self
+            .client
+            .post(&self.base_url)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::warn!("DBase API request failed: {}", e);
+                AppError::ExternalApiError(format!("DBase phone search failed: {}", e))
+            })?;
+
+        let status = response.status();
+        let response_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to get response text".to_string());
+
+        tracing::info!(
+            "DBase API response status: {}, body: {}",
+            status,
+            &response_text[..response_text.len().min(500)]
+        );
+
+        if !status.is_success() {
+            tracing::warn!(
+                "DBase API returned error status {}: {}",
+                status,
+                response_text
+            );
+            return Ok(None); // Return None instead of error to allow fallback
+        }
+
+        match serde_json::from_str::<crate::models::DBasePhoneResponse>(&response_text) {
+            Ok(data) => {
+                if let Some(ref nome) = data.nome {
+                    tracing::info!("DBase: Found person: {}", nome);
+                    if let Some(ref cpf) = data.cpf {
+                        tracing::info!("DBase: CPF found: {}", cpf);
+                    }
+                } else {
+                    tracing::info!("DBase: No person found for phone {}", phone);
+                }
+                Ok(Some(data))
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to parse DBase response: {} - raw: {}",
+                    e,
+                    &response_text[..response_text.len().min(200)]
+                );
+                Ok(None) // Return None instead of error to allow fallback
+            }
+        }
+    }
+
+    /// Search person by name using DBase API
+    ///
+    /// # Arguments
+    /// * `name` - Person's name to search
+    ///
+    /// # Returns
+    /// * `Ok(Some(DBasePhoneResponse))` - Person data found
+    /// * `Ok(None)` - No data found or API error
+    pub async fn search_by_name(
+        &self,
+        name: &str,
+    ) -> Result<Option<crate::models::DBasePhoneResponse>, AppError> {
+        tracing::info!("DBase: Searching by name: {}", name);
+
+        // Build form data
+        let form = reqwest::multipart::Form::new()
+            .text("nome", name.to_string())
+            .text("telefone", ""); // Empty phone field
+
+        let response = self
+            .client
+            .post(&self.base_url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::warn!("DBase API request failed: {}", e);
+                AppError::ExternalApiError(format!("DBase name search failed: {}", e))
+            })?;
+
+        if !response.status().is_success() {
+            tracing::warn!("DBase API returned non-success status");
+            return Ok(None);
+        }
+
+        match response.json::<crate::models::DBasePhoneResponse>().await {
+            Ok(data) => {
+                if data.cpf.is_some() {
+                    tracing::info!("DBase: Found person by name");
+                }
+                Ok(Some(data))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to parse DBase response: {}", e);
+                Ok(None)
+            }
+        }
+    }
+}

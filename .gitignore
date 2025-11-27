@@ -33,3 +33,6 @@ google-ads.yaml
 **/google-ads.yaml
 
 # Note: migrations/ should NOT be ignored (contains schema versions)
+
+# Logs
+logs/

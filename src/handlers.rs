@@ -2,7 +2,7 @@ use crate::config::Config;
 use crate::errors::AppError;
 use crate::gateway_client::C2sGatewayClient;
 use crate::models::*;
-use crate::services::{DiretrixService, EnrichmentService, WorkApiService};
+use crate::services::{EnrichmentService, WorkApiService};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -374,7 +374,6 @@ pub async fn c2s_enrich_lead(
     tracing::info!("C2S Enrich Lead: {}", lead_id);
 
     // Initialize services
-    let diretrix_service = DiretrixService::new(&state.config);
     let work_api_service = WorkApiService::new(&state.config);
 
     // Step 1: Fetch lead from C2S
@@ -396,77 +395,25 @@ pub async fn c2s_enrich_lead(
         customer.phone
     );
 
-    // Step 2: Use Diretrix to find CPF from phone/email
+    // Step 2: Use Diretrix (with DBase fallback) to find CPF from phone/email
     tracing::info!("Step 2: Using Diretrix to find CPF");
-    let _phone_opt = if !customer.phone.is_empty() {
+    let phone_opt = if !customer.phone.is_empty() {
         Some(customer.phone.as_str())
     } else {
         None
     };
-    let _email_opt = if !customer.email.is_empty() {
+    let email_opt = if !customer.email.is_empty() {
         Some(customer.email.as_str())
     } else {
         None
     };
 
-    // Parallel lookup - search by phone AND email separately
-    let phone_lookup = if !customer.phone.is_empty() {
-        diretrix_service.search_by_phone(&customer.phone).await.ok()
-    } else {
-        None
-    };
+    // Use enrichment module function which includes DBase fallback
+    let cpf_result =
+        crate::enrichment::find_cpf_via_diretrix(phone_opt, email_opt, &state.config).await?;
 
-    let email_lookup = if !customer.email.is_empty() {
-        diretrix_service.search_by_email(&customer.email).await.ok()
-    } else {
-        None
-    };
-
-    // Extract CPFs from both lookups
-    let phone_cpf = phone_lookup.as_ref().and_then(|results| {
-        if !results.is_empty() {
-            Some(results[0].cpf.clone())
-        } else {
-            None
-        }
-    });
-
-    let email_cpf = email_lookup.as_ref().and_then(|results| {
-        if !results.is_empty() {
-            Some(results[0].cpf.clone())
-        } else {
-            None
-        }
-    });
-
-    // Check if both found and if they're the same person
-    let (cpf_list, same_person) = match (&phone_cpf, &email_cpf) {
-        (Some(p_cpf), Some(e_cpf)) if p_cpf == e_cpf => {
-            tracing::info!(
-                "✓ Phone and email belong to the same person (CPF: {})",
-                p_cpf
-            );
-            (vec![p_cpf.clone()], true)
-        }
-        (Some(p_cpf), Some(e_cpf)) => {
-            tracing::warn!(
-                "⚠ Phone and email belong to DIFFERENT people! Phone CPF: {}, Email CPF: {}",
-                p_cpf,
-                e_cpf
-            );
-            (vec![p_cpf.clone(), e_cpf.clone()], false)
-        }
-        (Some(cpf), None) | (None, Some(cpf)) => {
-            tracing::info!("Found CPF from single source: {}", cpf);
-            (vec![cpf.clone()], false)
-        }
-        (None, None) => {
-            tracing::error!("Could not find CPF from either phone or email");
-            return Err(AppError::NotFound(
-                "Could not find CPF via Diretrix".to_string(),
-            ));
-        }
-    };
+    let cpf_list = cpf_result.cpfs;
+    let same_person = cpf_result.same_person;
 
     // Step 3: Enrich all CPFs with Work API
     tracing::info!(
@@ -860,73 +807,39 @@ pub async fn trigger_lead_processing(
     );
 
     // Initialize services for enrichment
-    let diretrix_service = DiretrixService::new(&state.config);
     let work_api_service = WorkApiService::new(&state.config);
     let storage = crate::db_storage::EnrichmentStorage::new(state.db.clone());
 
-    // Step 2: Use Diretrix to find CPF from phone/email
+    // Step 2: Use Diretrix (with DBase fallback) to find CPF from phone/email
     tracing::info!("Step 2: Using Diretrix to find CPF");
 
-    // Parallel lookup - search by phone AND email separately
-    let phone_lookup = if !customer.phone.is_empty() {
-        diretrix_service.search_by_phone(&customer.phone).await.ok()
+    let phone_opt = if !customer.phone.is_empty() {
+        Some(customer.phone.as_str())
+    } else {
+        None
+    };
+    let email_opt = if !customer.email.is_empty() {
+        Some(customer.email.as_str())
     } else {
         None
     };
 
-    let email_lookup = if !customer.email.is_empty() {
-        diretrix_service.search_by_email(&customer.email).await.ok()
-    } else {
-        None
-    };
+    // Use enrichment module function which includes DBase fallback
+    let cpf_result =
+        match crate::enrichment::find_cpf_via_diretrix(phone_opt, email_opt, &state.config).await {
+            Ok(result) => result,
+            Err(_) => {
+                tracing::error!("Could not find CPF from either phone or email");
+                return Ok(Json(json!({
+                    "success": false,
+                    "message": "Could not find CPF from phone or email",
+                    "lead_id": lead_id
+                })));
+            }
+        };
 
-    // Extract CPFs from both lookups
-    let phone_cpf = phone_lookup.as_ref().and_then(|results| {
-        if !results.is_empty() {
-            Some(results[0].cpf.clone())
-        } else {
-            None
-        }
-    });
-
-    let email_cpf = email_lookup.as_ref().and_then(|results| {
-        if !results.is_empty() {
-            Some(results[0].cpf.clone())
-        } else {
-            None
-        }
-    });
-
-    // Check if both found and if they're the same person
-    let (cpf_list, same_person) = match (&phone_cpf, &email_cpf) {
-        (Some(p_cpf), Some(e_cpf)) if p_cpf == e_cpf => {
-            tracing::info!(
-                "✓ Phone and email belong to the same person (CPF: {})",
-                p_cpf
-            );
-            (vec![p_cpf.clone()], true)
-        }
-        (Some(p_cpf), Some(e_cpf)) => {
-            tracing::warn!(
-                "⚠ Phone and email belong to DIFFERENT people! Phone CPF: {}, Email CPF: {}",
-                p_cpf,
-                e_cpf
-            );
-            (vec![p_cpf.clone(), e_cpf.clone()], false)
-        }
-        (Some(cpf), None) | (None, Some(cpf)) => {
-            tracing::info!("Found CPF from single source: {}", cpf);
-            (vec![cpf.clone()], false)
-        }
-        (None, None) => {
-            tracing::error!("Could not find CPF from either phone or email");
-            return Ok(Json(json!({
-                "success": false,
-                "message": "Could not find CPF from phone or email",
-                "lead_id": lead_id
-            })));
-        }
-    };
+    let cpf_list = cpf_result.cpfs;
+    let same_person = cpf_result.same_person;
 
     // Step 3: Enrich each CPF with Work API (with deduplication)
     tracing::info!("Step 3: Enriching {} CPF(s) with Work API", cpf_list.len());
@@ -991,7 +904,7 @@ pub async fn trigger_lead_processing(
     let mut full_message = String::new();
 
     // Add phone/email match indicator if both were found
-    if same_person && phone_cpf.is_some() && email_cpf.is_some() {
+    if same_person && phone_opt.is_some() && email_opt.is_some() {
         full_message.push_str("📞📧 Telefone e e-mail da mesma pessoa\n\n");
     }
 

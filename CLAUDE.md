@@ -357,6 +357,9 @@ DIRETRIX_BASE_URL=http://api.diretrixconsultoria.com.br
 DIRETRIX_USER=100198
 DIRETRIX_PASS=<password_here>
 
+# DBase API (fallback for Diretrix)
+DBASE_KEY=<api_key_here>
+
 # Server
 PORT=8080
 ```
@@ -562,10 +565,19 @@ psql $DB_URL -f docs/schemas/01_init.sql
 ### Diretrix API
 - **Base URL**: `http://api.diretrixconsultoria.com.br`
 - **Auth**: Basic auth (user/pass in URL or header)
-- **Purpose**: Find CPF from phone/email
+- **Purpose**: Find CPF from phone/email (primary)
 - **Endpoints**:
   - Search by phone: `/phone/<number>`
   - Search by email: `/email/<email>`
+
+### DBase API ⭐ NEW (2025-11-26)
+- **Base URL**: `https://app.dbase.com.br/sistema/consultas/Data-basebrasil-api2024/api`
+- **Auth**: Bearer token in header: `Authorization: Bearer <DBASE_KEY>`
+- **Purpose**: Find CPF from phone/email (fallback when Diretrix fails)
+- **Method**: POST with multipart form-data
+- **Data Coverage**: 220M CPFs, 72M CNPJs, 1.2B phone numbers
+- **Fallback Logic**: Automatically triggered when Diretrix returns no results
+- **See**: [docs/integrations/DBASE_INTEGRATION.md](docs/integrations/DBASE_INTEGRATION.md)
 
 ### Contact2Sale (C2S) API
 - **Base URL**: `https://api.contact2sale.com`
@@ -596,6 +608,7 @@ fly secrets set WORK_API="..."
 fly secrets set C2S_TOKEN="..."
 fly secrets set DIRETRIX_USER="..."
 fly secrets set DIRETRIX_PASS="..."
+fly secrets set DBASE_KEY="..."
 ```
 
 ---
@@ -603,11 +616,9 @@ fly secrets set DIRETRIX_PASS="..."
 ## Recent Changes & Current State
 
 ### Latest Deployment
-- **Date**: 2025-11-23
-- **Version**: 33
-- **Commits**: 
-  - `f927939` - "feat: achieve 100/100 code quality with comprehensive improvements"
-  - `d4c1baa` - "fix: include openapi.yml in Docker image for Swagger UI"
+- **Date**: 2025-11-26
+- **Version**: 35
+- **What's New**: DBase API integration as fallback for phone lookups
 - **Status**: ✅ Running in production
 - **URL**: https://mbras-c2s.fly.dev
 - **Swagger UI**: https://mbras-c2s.fly.dev/docs ⭐
@@ -630,6 +641,22 @@ fly secrets set DIRETRIX_PASS="..."
 9. ✅ Organized docs into categories (moved IMPROVEMENTS_TO_100.md to session-notes/)
 10. ✅ Updated README with 100/100 achievements and Swagger UI
 11. ✅ Updated CLAUDE.md with latest context
+
+### Recent Work Completed (2025-11-26)
+
+**🆕 DBase API Integration (Fallback System)**:
+1. ✅ Integrated DBase API as fallback for phone number lookups
+2. ✅ Added `DBaseService` with phone and name search capabilities
+3. ✅ Implemented automatic fallback when Diretrix fails
+4. ✅ Added multipart form-data support to reqwest
+5. ✅ Deployed DBASE_KEY secret to Fly.io
+6. ✅ Created comprehensive documentation: `docs/integrations/DBASE_INTEGRATION.md`
+
+**Benefits**:
+- **Increased Success Rate**: Fallback to 1.2B phone database when primary fails
+- **Graceful Degradation**: DBase errors don't break enrichment flow
+- **Zero Config**: Automatic fallback, no changes needed to existing API calls
+- **Logging**: Clear visibility into when fallback is triggered
 
 ### Design Decisions & Considerations
 

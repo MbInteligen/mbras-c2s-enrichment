@@ -511,3 +511,69 @@ pub struct ResponseMetadata {
     pub timestamp: String,
     pub modules_consulted: Vec<String>,
 }
+
+// ============ DBase API Models ============
+
+/// DBase API phone lookup response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DBasePhoneResponse {
+    /// Person's full name
+    pub nome: Option<String>,
+    /// CPF document number
+    pub cpf: Option<String>,
+    /// Birth date (format: DD/MM/YYYY)
+    #[serde(rename = "dataNascimento")]
+    pub data_nascimento: Option<String>,
+    /// Age
+    pub idade: Option<String>,
+    /// Gender (M/F)
+    pub sexo: Option<String>,
+    /// Mother's name
+    pub mae: Option<String>,
+    /// Father's name
+    pub pai: Option<String>,
+    /// RG document number
+    pub rg: Option<String>,
+    /// List of associated phone numbers
+    pub telefones: Option<Vec<DBasePhone>>,
+    /// List of email addresses
+    pub emails: Option<Vec<DBaseEmail>>,
+    /// List of addresses
+    pub enderecos: Option<Vec<DBaseAddress>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DBasePhone {
+    /// Full phone number with DDD
+    pub numero: String,
+    /// Area code (DDD)
+    pub ddd: Option<String>,
+    /// Phone operator (carrier)
+    pub operadora: Option<String>,
+    /// Phone type (Fixo, Celular, etc.)
+    pub tipo: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DBaseEmail {
+    /// Email address
+    pub email: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DBaseAddress {
+    /// Street name
+    pub logradouro: Option<String>,
+    /// Street number
+    pub numero: Option<String>,
+    /// Address complement
+    pub complemento: Option<String>,
+    /// Neighborhood
+    pub bairro: Option<String>,
+    /// City
+    pub cidade: Option<String>,
+    /// State (UF)
+    pub uf: Option<String>,
+    /// Postal code (CEP)
+    pub cep: Option<String>,
+}

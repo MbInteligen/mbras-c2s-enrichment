@@ -13,6 +13,9 @@ pub struct Config {
     pub diretrix_user: String,
     pub diretrix_pass: String,
 
+    // DBase API integration (fallback for Diretrix)
+    pub dbase_key: String,
+
     // Google Ads integration (optional - only required if using Google Ads webhooks)
     pub google_ads_webhook_key: Option<String>, // Webhook verification key
     pub c2s_default_seller_id: Option<String>,  // Default seller for new leads
@@ -109,6 +112,14 @@ impl Config {
                         anyhow::bail!("DIRETRIX_PASS cannot be empty");
                     }
                     Ok(pass)
+                })?,
+            dbase_key: std::env::var("DBASE_KEY")
+                .map_err(|_| anyhow::anyhow!("DBASE_KEY environment variable required"))
+                .and_then(|key| {
+                    if key.trim().is_empty() {
+                        anyhow::bail!("DBASE_KEY cannot be empty");
+                    }
+                    Ok(key)
                 })?,
             google_ads_webhook_key: std::env::var("GOOGLE_ADS_WEBHOOK_KEY")
                 .ok()
