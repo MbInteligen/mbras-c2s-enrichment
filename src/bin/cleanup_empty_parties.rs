@@ -1,7 +1,13 @@
+//! Script to cleanup empty parties from the database.
+
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
 
+/// Main entry point for the cleanup script.
+///
+/// Connects to the database and deletes parties that have no corresponding 'people' or 'companies' records.
+/// Includes a safety check to avoid deleting recently created parties.
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load environment variables

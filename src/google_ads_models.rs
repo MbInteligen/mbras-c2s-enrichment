@@ -44,7 +44,13 @@ pub struct UserColumnData {
 }
 
 impl GoogleAdsWebhookPayload {
-    /// Extract full name from form data
+    /// Extracts the full name from the form data.
+    ///
+    /// Searches for fields with `column_id` "FULL_NAME" or "NAME".
+    ///
+    /// # Returns
+    ///
+    /// * `Option<String>` - The full name if found, otherwise `None`.
     pub fn get_name(&self) -> Option<String> {
         self.user_column_data
             .iter()
@@ -52,7 +58,13 @@ impl GoogleAdsWebhookPayload {
             .map(|field| field.string_value.clone())
     }
 
-    /// Extract email from form data
+    /// Extracts the email address from the form data.
+    ///
+    /// Searches for a field with `column_id` "EMAIL". The email is trimmed and lowercased.
+    ///
+    /// # Returns
+    ///
+    /// * `Option<String>` - The email address if found, otherwise `None`.
     pub fn get_email(&self) -> Option<String> {
         self.user_column_data
             .iter()
@@ -60,7 +72,13 @@ impl GoogleAdsWebhookPayload {
             .map(|field| field.string_value.trim().to_lowercase())
     }
 
-    /// Extract phone number from form data
+    /// Extracts the phone number from the form data.
+    ///
+    /// Searches for fields with `column_id` "PHONE_NUMBER" or "PHONE".
+    ///
+    /// # Returns
+    ///
+    /// * `Option<String>` - The phone number if found, otherwise `None`.
     pub fn get_phone(&self) -> Option<String> {
         self.user_column_data
             .iter()
@@ -68,7 +86,14 @@ impl GoogleAdsWebhookPayload {
             .map(|field| field.string_value.clone())
     }
 
-    /// Extract CPF from form data (if form includes CPF field)
+    /// Extracts the CPF document number from the form data.
+    ///
+    /// Searches for fields with `column_id` "CPF", "DOCUMENT", or where the column name contains "cpf".
+    /// Formatting (dots and hyphens) is removed.
+    ///
+    /// # Returns
+    ///
+    /// * `Option<String>` - The numeric CPF string if found, otherwise `None`.
     pub fn get_cpf(&self) -> Option<String> {
         self.user_column_data
             .iter()
@@ -87,7 +112,13 @@ impl GoogleAdsWebhookPayload {
             })
     }
 
-    /// Extract city from form data
+    /// Extracts the city from the form data.
+    ///
+    /// Searches for fields with `column_id` "CITY" or where the column name contains "cidade".
+    ///
+    /// # Returns
+    ///
+    /// * `Option<String>` - The city name if found, otherwise `None`.
     #[allow(dead_code)]
     pub fn get_city(&self) -> Option<String> {
         self.user_column_data
@@ -98,7 +129,15 @@ impl GoogleAdsWebhookPayload {
             .map(|field| field.string_value.clone())
     }
 
-    /// Extract custom field by column_id
+    /// Extracts a custom field by its column identifier.
+    ///
+    /// # Arguments
+    ///
+    /// * `column_id` - The identifier of the column to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// * `Option<String>` - The value of the field if found, otherwise `None`.
     #[allow(dead_code)]
     pub fn get_field(&self, column_id: &str) -> Option<String> {
         self.user_column_data
@@ -107,7 +146,17 @@ impl GoogleAdsWebhookPayload {
             .map(|field| field.string_value.clone())
     }
 
-    /// Generate formatted description for C2S
+    /// Generates a formatted description for the C2S lead.
+    ///
+    /// Includes Google Ads campaign info, form data, and optional enrichment data.
+    ///
+    /// # Arguments
+    ///
+    /// * `enrichment_data` - Optional string containing enrichment details.
+    ///
+    /// # Returns
+    ///
+    /// * `String` - The formatted description.
     pub fn format_description(&self, enrichment_data: Option<&str>) -> String {
         let mut desc = String::new();
 

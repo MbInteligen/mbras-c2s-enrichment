@@ -4,7 +4,8 @@ use serde_json::json;
 use std::time::Duration;
 use tracing;
 
-/// Client for interacting directly with the C2S API
+/// Client for interacting directly with the C2S API.
+///
 /// Formerly communicated via a Python Gateway, now direct.
 #[derive(Clone)]
 pub struct C2sGatewayClient {
@@ -14,6 +15,12 @@ pub struct C2sGatewayClient {
 }
 
 impl C2sGatewayClient {
+    /// Creates a new `C2sGatewayClient`.
+    ///
+    /// # Arguments
+    ///
+    /// * `base_url` - The base URL of the C2S API.
+    /// * `token` - The API token for authentication.
     #[allow(dead_code)]
     pub fn new(base_url: String, token: String) -> Result<Self, AppError> {
         let client = reqwest::Client::builder()
@@ -30,7 +37,15 @@ impl C2sGatewayClient {
         })
     }
 
-    /// Get lead from C2S
+    /// Gets a lead from C2S.
+    ///
+    /// # Arguments
+    ///
+    /// * `lead_id` - The ID of the lead to fetch.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<serde_json::Value, AppError>` - The lead data.
     pub async fn get_lead(&self, lead_id: &str) -> Result<serde_json::Value, AppError> {
         let url = format!("{}/integration/leads/{}", self.base_url, lead_id);
         tracing::info!("Fetching lead {} from C2S: {}", lead_id, url);
@@ -62,7 +77,20 @@ impl C2sGatewayClient {
         Ok(data)
     }
 
-    /// Create new lead in C2S
+    /// Creates a new lead in C2S.
+    ///
+    /// # Arguments
+    ///
+    /// * `customer_name` - Name of the customer.
+    /// * `phone` - Optional phone number.
+    /// * `email` - Optional email address.
+    /// * `description` - Lead description.
+    /// * `source` - Source of the lead (defaults to "Google Ads").
+    /// * `seller_id` - Optional seller ID to assign.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<String, AppError>` - The ID of the created lead.
     #[allow(dead_code)]
     pub async fn create_lead(
         &self,
@@ -159,7 +187,16 @@ impl C2sGatewayClient {
         Ok(lead_id)
     }
 
-    /// Send message to lead in C2S
+    /// Sends a message to a lead in C2S.
+    ///
+    /// # Arguments
+    ///
+    /// * `lead_id` - The ID of the lead.
+    /// * `message` - The message content.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), AppError>` - Ok or an error.
     pub async fn send_message(&self, lead_id: &str, message: &str) -> Result<(), AppError> {
         let url = format!(
             "{}/integration/leads/{}/create_message",

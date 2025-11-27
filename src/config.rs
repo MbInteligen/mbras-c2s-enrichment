@@ -1,25 +1,46 @@
 use serde::Deserialize;
 use url::Url;
 
+/// Application configuration loaded from environment variables.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
+    /// The connection URL for the PostgreSQL database.
     pub database_url: String,
+    /// The port on which the server should listen.
     pub port: u16,
+    /// The API token for the C2S service.
     pub c2s_token: String,
+    /// The base URL for the C2S service.
     pub c2s_base_url: String,
+    /// Optional secret for verifying C2S webhooks.
     pub webhook_secret: Option<String>, // Optional webhook secret for C2S webhooks
+    /// API key for the Work API.
     pub worker_api_key: String,
+    /// Base URL for the Diretrix service.
     pub diretrix_base_url: String,
+    /// Username for Diretrix authentication.
     pub diretrix_user: String,
+    /// Password for Diretrix authentication.
     pub diretrix_pass: String,
 
     // Google Ads integration (optional - only required if using Google Ads webhooks)
+    /// Webhook verification key for Google Ads.
     pub google_ads_webhook_key: Option<String>, // Webhook verification key
-    pub c2s_default_seller_id: Option<String>,  // Default seller for new leads
-    pub c2s_description_max_length: usize,      // Max description length
+    /// Default seller ID to assign to leads created via Google Ads.
+    pub c2s_default_seller_id: Option<String>, // Default seller for new leads
+    /// Maximum allowed length for the description field.
+    pub c2s_description_max_length: usize, // Max description length
 }
 
 impl Config {
+    /// Loads the configuration from environment variables.
+    ///
+    /// This method loads variables from a `.env` file (if present) and the system environment.
+    /// It validates that all required variables are present and correctly formatted.
+    ///
+    /// # Returns
+    ///
+    /// * `anyhow::Result<Self>` - The loaded configuration, or an error if validation fails.
     pub fn from_env() -> anyhow::Result<Self> {
         dotenvy::dotenv().ok();
 

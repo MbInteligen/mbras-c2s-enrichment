@@ -37,6 +37,17 @@ Rust-based API for Contact2Sale (C2S) lead enrichment using Diretrix and Work AP
 - 🎯 **100/100 Code Quality**: Perfect scores across all quality metrics
 - ✅ **Comprehensive Testing**: 25 tests with property-based testing
 
+## Documentation
+
+### Code Documentation
+The codebase is fully documented with Rust doc comments. You can generate the documentation locally using:
+
+```bash
+cargo doc --open
+```
+
+This will open the generated HTML documentation in your browser, covering all modules, structs, and functions.
+
 ## Architecture
 
 ```

@@ -1,11 +1,11 @@
-/// Shared enrichment logic for both webhook and HTTP handlers
+/// Shared enrichment logic for both webhook and HTTP handlers.
 ///
 /// This module provides reusable functions for the enrichment workflow:
-/// 1. Find CPF via Diretrix (phone/email lookup)
-/// 2. Enrich CPF data via Work API
-/// 3. Format enriched message
-/// 4. Send message to C2S
-/// 5. Store in database
+/// 1. Find CPF via Diretrix (phone/email lookup).
+/// 2. Enrich CPF data via Work API.
+/// 3. Format enriched message.
+/// 4. Send message to C2S.
+/// 5. Store in database.
 use crate::config::Config;
 use crate::db_storage::EnrichmentStorage;
 use crate::errors::{AppError, ResultExt};
@@ -21,21 +21,37 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
-/// Result of CPF lookup via Diretrix
+/// Result of CPF lookup via Diretrix.
 #[derive(Debug)]
 pub struct CpfLookupResult {
+    /// List of found CPFs.
     pub cpfs: Vec<String>,
+    /// Whether the found CPFs belong to the same person.
     pub same_person: bool,
 }
 
+/// Structure holding cached or existing enrichment data found in DB.
 #[derive(Debug, Clone)]
 pub struct ExistingEnrichment {
+    /// UUID of the party in the database.
     pub party_id: Uuid,
+    /// The CPF associated with the party.
     pub cpf: String,
+    /// The existing enriched data (if any).
     pub enriched_data: Option<serde_json::Value>,
 }
 
-/// Check if we already have enriched data for this phone/email
+/// Checks if we already have enriched data for this phone/email in cache or DB.
+///
+/// # Arguments
+///
+/// * `state` - The application state.
+/// * `phone` - Optional phone number.
+/// * `email` - Optional email address.
+///
+/// # Returns
+///
+/// * `Result<Option<ExistingEnrichment>, AppError>` - The existing enrichment if found, or None.
 pub async fn find_existing_enrichment(
     state: &Arc<AppState>,
     phone: Option<&str>,
@@ -226,7 +242,17 @@ pub fn validate_br_phone(raw: &str) -> (bool, String) {
     }
 }
 
-/// Find CPF(s) from phone and/or email using Diretrix API
+/// Finds CPF(s) from phone and/or email using Diretrix API.
+///
+/// # Arguments
+///
+/// * `phone` - Optional phone number.
+/// * `email` - Optional email address.
+/// * `config` - Application configuration.
+///
+/// # Returns
+///
+/// * `Result<CpfLookupResult, AppError>` - The lookup result containing found CPFs.
 pub async fn find_cpf_via_diretrix(
     phone: Option<&str>,
     email: Option<&str>,
@@ -333,7 +359,16 @@ pub async fn find_cpf_via_diretrix(
     Ok(CpfLookupResult { cpfs, same_person })
 }
 
-/// Enrich multiple CPFs with Work API
+/// Enriches multiple CPFs with Work API.
+///
+/// # Arguments
+///
+/// * `cpfs` - List of CPFs to enrich.
+/// * `config` - Application configuration.
+///
+/// # Returns
+///
+/// * `Result<Vec<Value>, AppError>` - List of enrichment results (JSON values).
 pub async fn enrich_cpfs_with_work_api(
     cpfs: &[String],
     config: &Config,
@@ -413,7 +448,18 @@ pub fn format_enriched_message_body(
     }
 }
 
-/// Send enriched message to C2S (via gateway if available)
+/// Sends an enriched message to C2S (via gateway if available).
+///
+/// # Arguments
+///
+/// * `lead_id` - The ID of the lead.
+/// * `message` - The message content.
+/// * `gateway_client` - Optional C2S gateway client.
+/// * `config` - Application configuration.
+///
+/// # Returns
+///
+/// * `Result<(), AppError>` - Ok or an error.
 pub async fn send_message_to_c2s(
     lead_id: &str,
     message: &str,
@@ -432,7 +478,18 @@ pub async fn send_message_to_c2s(
     Ok(())
 }
 
-/// Store enriched data in database
+/// Stores enriched data in the database.
+///
+/// # Arguments
+///
+/// * `db` - Database connection pool.
+/// * `cpfs` - List of CPFs corresponding to the enriched data.
+/// * `enriched_data` - List of enriched data JSON objects.
+/// * `lead_id` - Optional lead ID to associate with the data.
+///
+/// # Returns
+///
+/// * `Result<Vec<uuid::Uuid>, AppError>` - List of stored entity IDs.
 pub async fn store_enriched_data(
     db: &PgPool,
     cpfs: &[String],
@@ -577,22 +634,29 @@ pub async fn enrich_and_send_workflow(
     })
 }
 
-/// Result of enrichment workflow
+/// Result of the enrichment workflow.
 #[derive(Debug)]
 pub struct EnrichmentResult {
+    /// ID of the lead processed.
     #[allow(dead_code)]
     pub lead_id: String,
+    /// List of CPFs that were enriched.
     pub cpfs_enriched: Vec<String>,
+    /// Whether the data belongs to the same person.
     #[allow(dead_code)]
     pub same_person: bool,
+    /// Whether the message was sent to C2S.
     #[allow(dead_code)]
     pub message_sent: bool,
+    /// Number of entities stored in the database.
     pub stored_count: usize,
+    /// IDs of the entities stored in the database.
     #[allow(dead_code)]
     pub entity_ids: Vec<uuid::Uuid>,
 }
 
 impl EnrichmentResult {
+    /// Converts the result to a JSON value.
     #[allow(dead_code)]
     pub fn to_json(&self) -> Value {
         json!({

@@ -1,4 +1,5 @@
-// Data-access layer re-exports
+//! Data access layer.
+
 pub mod db {
     pub use crate::db::*;
 }

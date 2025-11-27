@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
+/// Service for interacting with the Work API.
 pub struct WorkApiService {
     client: Client,
     base_url: String,
@@ -14,6 +15,11 @@ pub struct WorkApiService {
 }
 
 impl WorkApiService {
+    /// Creates a new `WorkApiService`.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Application configuration.
     pub fn new(config: &Config) -> Self {
         Self {
             client: Client::new(),
@@ -22,7 +28,15 @@ impl WorkApiService {
         }
     }
 
-    /// Fetch all available modules from Work API for a given document (CPF)
+    /// Fetches all available modules from Work API for a given document (CPF).
+    ///
+    /// # Arguments
+    ///
+    /// * `documento` - The document number (CPF) to query.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<WorkApiCompleteResponse, AppError>` - The Work API response or an error.
     pub async fn fetch_all_modules(
         &self,
         documento: &str,
@@ -75,7 +89,16 @@ impl WorkApiService {
         Ok(result)
     }
 
-    /// Fetch a specific module from Work API
+    /// Fetches a specific module from Work API.
+    ///
+    /// # Arguments
+    ///
+    /// * `module` - The name of the module to fetch.
+    /// * `consulta` - The document or query parameter.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Option<Value>, AppError>` - The module data if successful, or None/Error.
     pub async fn fetch_module(
         &self,
         module: &str,
@@ -112,16 +135,32 @@ impl WorkApiService {
     }
 }
 
+/// Service for managing customer data in the local database.
 pub struct CustomerService {
     pool: PgPool,
 }
 
 impl CustomerService {
+    /// Creates a new `CustomerService`.
+    ///
+    /// # Arguments
+    ///
+    /// * `pool` - Database connection pool.
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 
-    /// Find customer by CPF, email, phone, or name
+    /// Finds a customer by CPF, email, phone, or name.
+    ///
+    /// Priority order: CPF > Email > Phone > Name.
+    ///
+    /// # Arguments
+    ///
+    /// * `params` - Query parameters containing search criteria.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Option<Customer>, AppError>` - The customer if found, or None.
     pub async fn find_customer(
         &self,
         params: &CustomerQueryParams,
@@ -217,7 +256,15 @@ impl CustomerService {
         Ok(result)
     }
 
-    /// Get customer emails
+    /// Gets all emails associated with a customer.
+    ///
+    /// # Arguments
+    ///
+    /// * `customer_id` - The UUID of the customer.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Vec<Email>, AppError>` - List of emails.
     pub async fn get_customer_emails(
         &self,
         customer_id: &uuid::Uuid,
@@ -249,7 +296,15 @@ impl CustomerService {
         Ok(emails)
     }
 
-    /// Get customer phones
+    /// Gets all phones associated with a customer.
+    ///
+    /// # Arguments
+    ///
+    /// * `customer_id` - The UUID of the customer.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Vec<Phone>, AppError>` - List of phones.
     pub async fn get_customer_phones(
         &self,
         customer_id: &uuid::Uuid,
@@ -283,12 +338,19 @@ impl CustomerService {
     }
 }
 
+/// Service for coordinating enrichment logic.
 pub struct EnrichmentService {
     work_api: WorkApiService,
     customer_service: CustomerService,
 }
 
 impl EnrichmentService {
+    /// Creates a new `EnrichmentService`.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Application configuration.
+    /// * `pool` - Database connection pool.
     pub fn new(config: &Config, pool: PgPool) -> Self {
         Self {
             work_api: WorkApiService::new(config),
@@ -296,7 +358,20 @@ impl EnrichmentService {
         }
     }
 
-    /// Get or enrich customer data and return unified response
+    /// Gets customer data, enriching it from external sources if necessary, and returns a unified response.
+    ///
+    /// 1. Tries to find customer in local DB.
+    /// 2. If found but not enriched, calls Work API.
+    /// 3. If not found, calls Work API directly using provided identifiers.
+    /// 4. Combines data into `UnifiedCustomerResponse`.
+    ///
+    /// # Arguments
+    ///
+    /// * `params` - Query parameters containing customer identifiers.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<UnifiedCustomerResponse, AppError>` - The unified response.
     pub async fn get_customer_unified(
         &self,
         params: &CustomerQueryParams,
@@ -378,7 +453,7 @@ impl EnrichmentService {
         }
     }
 
-    /// Build unified response from various data sources
+    /// Builds a unified response object from various data sources.
     fn build_unified_response(
         &self,
         customer: Option<Customer>,
@@ -607,17 +682,20 @@ impl EnrichmentService {
 
 // ============ C2S API Integration ============
 
+/// Response from C2S API when fetching a lead.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct C2SLeadResponse {
     pub data: C2SLead,
 }
 
+/// C2S Lead data structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct C2SLead {
     pub id: String,
     pub attributes: C2SLeadAttributes,
 }
 
+/// Attributes of a C2S Lead.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct C2SLeadAttributes {
     pub customer: C2SCustomer,
@@ -625,6 +703,7 @@ pub struct C2SLeadAttributes {
     pub product: C2SProduct,
 }
 
+/// Customer information within a C2S Lead.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct C2SCustomer {
     pub id: String,
@@ -633,11 +712,13 @@ pub struct C2SCustomer {
     pub phone: String,
 }
 
+/// Product information within a C2S Lead.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct C2SProduct {
     pub prop_ref: Option<String>,
 }
 
+/// Payload for sending a message to C2S.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct C2SMessagePayload {
     #[serde(rename = "leadId")]
@@ -645,6 +726,7 @@ pub struct C2SMessagePayload {
     pub body: String,
 }
 
+/// Service for interacting with the C2S API.
 pub struct C2SService {
     client: Client,
     base_url: String,
@@ -652,6 +734,7 @@ pub struct C2SService {
 }
 
 impl C2SService {
+    /// Creates a new `C2SService`.
     pub fn new(config: &Config) -> Self {
         Self {
             client: Client::new(),
@@ -660,7 +743,15 @@ impl C2SService {
         }
     }
 
-    /// Fetch lead data from C2S by lead ID
+    /// Fetches lead data from C2S by lead ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `lead_id` - The ID of the lead to fetch.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<C2SLeadResponse, AppError>` - The lead data.
     #[allow(dead_code)]
     pub async fn fetch_lead(&self, lead_id: &str) -> Result<C2SLeadResponse, AppError> {
         let url = format!("{}/integration/leads/{}", self.base_url, lead_id);
@@ -695,7 +786,16 @@ impl C2SService {
         Ok(lead_data)
     }
 
-    /// Send enriched data back to C2S as a message
+    /// Sends enriched data back to C2S as a message.
+    ///
+    /// # Arguments
+    ///
+    /// * `lead_id` - The ID of the lead.
+    /// * `body` - The message body content.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), AppError>` - Ok or an error.
     pub async fn send_message(&self, lead_id: &str, body: &str) -> Result<(), AppError> {
         let url = format!(
             "{}/integration/leads/{}/create_message",
@@ -735,7 +835,20 @@ impl C2SService {
         Ok(())
     }
 
-    /// Create a new lead in C2S
+    /// Creates a new lead in C2S.
+    ///
+    /// # Arguments
+    ///
+    /// * `customer_name` - Name of the customer.
+    /// * `phone` - Optional phone number.
+    /// * `email` - Optional email address.
+    /// * `description` - Lead description.
+    /// * `source` - Source of the lead (defaults to "Google Ads").
+    /// * `seller_id` - Optional seller ID to assign.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<String, AppError>` - The ID of the created lead.
     pub async fn create_lead(
         &self,
         customer_name: &str,
@@ -834,12 +947,14 @@ impl C2SService {
 
 // ============ Diretrix API Integration ============
 
+/// Search result from Diretrix API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiretrixPersonSearch {
     pub nome: String,
     pub cpf: String,
 }
 
+/// Detailed person data from Diretrix API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiretrixPersonData {
     pub nome: String,
@@ -858,6 +973,7 @@ pub struct DiretrixPersonData {
     pub enderecos: Vec<DiretrixAddress>,
 }
 
+/// Phone information from Diretrix API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiretrixPhone {
     pub numero: String,
@@ -867,12 +983,14 @@ pub struct DiretrixPhone {
     pub ranking: i32,
 }
 
+/// Email information from Diretrix API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiretrixEmail {
     pub endereco: String,
     pub ranking: i32,
 }
 
+/// Address information from Diretrix API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiretrixAddress {
     pub logadouro: String,
@@ -887,6 +1005,7 @@ pub struct DiretrixAddress {
     pub logadouro_tipo: Option<String>,
 }
 
+/// Service for interacting with the Diretrix API.
 pub struct DiretrixService {
     client: Client,
     base_url: String,
@@ -895,6 +1014,7 @@ pub struct DiretrixService {
 }
 
 impl DiretrixService {
+    /// Creates a new `DiretrixService`.
     pub fn new(config: &Config) -> Self {
         Self {
             client: Client::new(),
@@ -904,7 +1024,15 @@ impl DiretrixService {
         }
     }
 
-    /// Search person by phone number - returns list of possible matches
+    /// Searches for a person by phone number.
+    ///
+    /// # Arguments
+    ///
+    /// * `phone` - The phone number to search for.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Vec<DiretrixPersonSearch>, AppError>` - List of matches.
     pub async fn search_by_phone(
         &self,
         phone: &str,
@@ -961,7 +1089,15 @@ impl DiretrixService {
         Ok(results)
     }
 
-    /// Search person by email - returns list of possible matches
+    /// Searches for a person by email address.
+    ///
+    /// # Arguments
+    ///
+    /// * `email` - The email address to search for.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Vec<DiretrixPersonSearch>, AppError>` - List of matches.
     pub async fn search_by_email(
         &self,
         email: &str,
@@ -1000,7 +1136,15 @@ impl DiretrixService {
         Ok(results)
     }
 
-    /// Get full person data by CPF
+    /// Gets full person data by CPF.
+    ///
+    /// # Arguments
+    ///
+    /// * `cpf` - The CPF to query.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<DiretrixPersonData, AppError>` - The person data.
     #[allow(dead_code)]
     pub async fn get_person_by_cpf(&self, cpf: &str) -> Result<DiretrixPersonData, AppError> {
         let url = format!("{}/Consultas/Pessoa/{}", self.base_url, cpf);
@@ -1040,7 +1184,16 @@ impl DiretrixService {
         Ok(person_data)
     }
 
-    /// Enrich person data - search by phone/email, then get full data by CPF
+    /// Enriches person data by searching via phone or email, then fetching full data by CPF.
+    ///
+    /// # Arguments
+    ///
+    /// * `phone` - Optional phone number.
+    /// * `email` - Optional email address.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Option<DiretrixPersonData>, AppError>` - The person data if found.
     #[allow(dead_code)]
     pub async fn enrich_person(
         &self,

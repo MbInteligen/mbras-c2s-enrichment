@@ -6,18 +6,36 @@ use sqlx::PgPool;
 use std::str::FromStr;
 use uuid::Uuid;
 
-/// Database storage service for enriched person data
+/// Database storage service for enriched person data.
+///
+/// Handles storage of party information, contacts, addresses, and enrichment data.
 pub struct EnrichmentStorage {
+    /// Database connection pool.
     pool: PgPool,
 }
 
 impl EnrichmentStorage {
+    /// Creates a new `EnrichmentStorage`.
+    ///
+    /// # Arguments
+    ///
+    /// * `pool` - Database connection pool.
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 
-    /// Store or update enriched person data from Work API
-    /// Uses sequential queries instead of complex CTEs for better sqlx compatibility
+    /// Stores or updates enriched person data from Work API.
+    ///
+    /// This is a convenience wrapper around `store_enriched_person_with_lead`.
+    ///
+    /// # Arguments
+    ///
+    /// * `cpf` - The CPF of the person.
+    /// * `work_data` - The complete response from the Work API.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Uuid, AppError>` - The ID of the party, or an error.
     #[allow(dead_code)]
     pub async fn store_enriched_person(
         &self,
@@ -28,7 +46,19 @@ impl EnrichmentStorage {
             .await
     }
 
-    /// Store enriched person data with optional lead_id for C2S tracking
+    /// Stores enriched person data with optional `lead_id` for C2S tracking.
+    ///
+    /// Uses sequential queries instead of complex CTEs for better SQLx compatibility.
+    ///
+    /// # Arguments
+    ///
+    /// * `cpf` - The CPF of the person.
+    /// * `work_data` - The complete response from the Work API.
+    /// * `lead_id` - Optional lead ID to associate with the enrichment.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Uuid, AppError>` - The ID of the party, or an error.
     pub async fn store_enriched_person_with_lead(
         &self,
         cpf: &str,
@@ -289,7 +319,16 @@ impl EnrichmentStorage {
         Ok(party_id)
     }
 
-    /// Store addresses for a party (creates address rows as needed)
+    /// Stores addresses for a party (creates address rows as needed).
+    ///
+    /// # Arguments
+    ///
+    /// * `party_id` - The ID of the party.
+    /// * `enderecos` - List of address JSON objects.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), AppError>` - Ok or an error.
     async fn store_party_addresses(
         &self,
         party_id: Uuid,
@@ -401,7 +440,16 @@ impl EnrichmentStorage {
         Ok(())
     }
 
-    /// Store emails for a party
+    /// Stores emails for a party.
+    ///
+    /// # Arguments
+    ///
+    /// * `party_id` - The ID of the party.
+    /// * `emails` - List of email JSON objects.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), AppError>` - Ok or an error.
     async fn store_party_emails(
         &self,
         party_id: Uuid,
@@ -458,7 +506,16 @@ impl EnrichmentStorage {
         Ok(())
     }
 
-    /// Store phones for a party
+    /// Stores phones for a party.
+    ///
+    /// # Arguments
+    ///
+    /// * `party_id` - The ID of the party.
+    /// * `telefones` - List of phone JSON objects.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), AppError>` - Ok or an error.
     async fn store_party_phones(
         &self,
         party_id: Uuid,
@@ -505,7 +562,16 @@ impl EnrichmentStorage {
         Ok(())
     }
 
-    /// Lookup CPF from contact (phone or email)
+    /// Lookups CPF from contact (phone or email).
+    ///
+    /// # Arguments
+    ///
+    /// * `phone` - Optional phone number.
+    /// * `email` - Optional email address.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Option<String>, AppError>` - The CPF if found, or None.
     #[allow(dead_code)]
     pub async fn lookup_cpf_from_contact(
         &self,
@@ -538,7 +604,7 @@ impl EnrichmentStorage {
     }
 }
 
-/// Parse Brazilian date format (DD/MM/YYYY) to chrono::NaiveDate
+/// Parses Brazilian date format (DD/MM/YYYY) to `chrono::NaiveDate`.
 fn parse_br_date(date_str: &str) -> Result<chrono::NaiveDate, chrono::ParseError> {
     chrono::NaiveDate::parse_from_str(date_str, "%d/%m/%Y")
 }
