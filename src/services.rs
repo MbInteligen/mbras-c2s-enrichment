@@ -735,6 +735,54 @@ impl C2SService {
         Ok(())
     }
 
+    /// Resolve Google Ads lead source to get ad group name for product field
+    /// Calls ibvi-ads-gateway /v1/leads/resolve-source endpoint
+    pub async fn resolve_lead_source(&self, google_lead_id: &str) -> Result<Option<String>, AppError> {
+        let gateway_url = std::env::var("C2S_GATEWAY_URL")
+            .unwrap_or_else(|_| "https://mbras-c2s-gateway.fly.dev".to_string());
+        
+        let url = format!("{}/leads/resolve-source?google_lead_id={}", gateway_url, google_lead_id);
+        
+        tracing::info!("Resolving lead source for google_lead_id: {}", google_lead_id);
+        
+        let response = self
+            .client
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await;
+        
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                let data: serde_json::Value = resp.json().await.map_err(|e| {
+                    AppError::ExternalApiError(format!("Failed to parse resolve-source response: {}", e))
+                })?;
+                
+                // Extract product_description from response
+                if let Some(product_desc) = data.get("product_description").and_then(|v| v.as_str()) {
+                    tracing::info!("✅ Resolved product: {}", product_desc);
+                    Ok(Some(product_desc.to_string()))
+                } else if let Some(ad_group_name) = data.get("ad_group_name").and_then(|v| v.as_str()) {
+                    tracing::info!("✅ Resolved ad_group_name: {}", ad_group_name);
+                    Ok(Some(ad_group_name.to_string()))
+                } else {
+                    tracing::warn!("⚠️  resolve-source returned no product_description");
+                    Ok(None)
+                }
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let error_text = resp.text().await.unwrap_or_default();
+                tracing::warn!("⚠️  resolve-source failed {}: {}", status, error_text);
+                Ok(None)
+            }
+            Err(e) => {
+                tracing::warn!("⚠️  resolve-source request failed: {}", e);
+                Ok(None)
+            }
+        }
+    }
+
     /// Create a new lead in C2S
     pub async fn create_lead(
         &self,
@@ -743,6 +791,7 @@ impl C2SService {
         email: Option<&str>,
         description: &str,
         source: Option<&str>,
+        product: Option<&str>,
         seller_id: Option<&str>,
     ) -> Result<String, AppError> {
         let url = format!("{}/integration/leads", self.base_url);
@@ -759,6 +808,9 @@ impl C2SService {
         }
         if let Some(email_val) = email {
             attributes.insert("email".to_string(), json!(email_val));
+        }
+        if let Some(product_val) = product {
+            attributes.insert("product".to_string(), json!(product_val));
         }
         if let Some(seller_val) = seller_id {
             attributes.insert("seller_id".to_string(), json!(seller_val));

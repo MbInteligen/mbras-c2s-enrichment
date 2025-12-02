@@ -139,11 +139,28 @@ pub async fn google_ads_webhook_handler(
         description.clone()
     };
 
-    // Step 7: Create lead in C2S directly (using JSON:API format)
+    // Step 7: Resolve lead source to get ad group name for product field
     let start = std::time::Instant::now();
 
     let c2s_service = services::C2SService::new(&app_state.config);
 
+    // Try to resolve the ad group name from Google Ads via gateway
+    let product = match c2s_service.resolve_lead_source(&payload.lead_id).await {
+        Ok(Some(product_name)) => {
+            tracing::info!("✅ Resolved product from ad group: {}", product_name);
+            Some(product_name)
+        }
+        Ok(None) => {
+            tracing::warn!("⚠️  Could not resolve product from Google Ads lead");
+            None
+        }
+        Err(e) => {
+            tracing::warn!("⚠️  Error resolving product: {}", e);
+            None
+        }
+    };
+
+    // Step 8: Create lead in C2S directly (using JSON:API format)
     let c2s_lead_id = c2s_service
         .create_lead(
             &customer_name,
@@ -151,11 +168,10 @@ pub async fn google_ads_webhook_handler(
             email_validated.as_deref(),
             &description_final,
             Some("Google Ads"),
+            product.as_deref(),
             app_state.config.c2s_default_seller_id.as_deref(),
         )
         .await?;
-
-    let latency_ms = start.elapsed().as_millis() as i32;
 
     tracing::info!("✅ Lead created in C2S: {} ({}ms)", c2s_lead_id, latency_ms);
 
