@@ -62,13 +62,13 @@
 **Priority:** URGENT — Must complete before any Phase 1+ work begins.
 **Rationale:** Establishes measurable baselines, migration safety, and distributed coordination so Phase 1-3 KPIs are measurable from day one.
 
-- [ ] **Parity contract document** — One-to-one mapping from comparison doc "Rust missing" rows to phase/checkbox. Published as `docs/PARITY_CONTRACT.md`. Any new feature must trace back to a comparison-doc row or an explicit "new" marker.
-- [ ] **Minimal observability (Prometheus)** — `GET /metrics` endpoint with Histogram `enrichment_duration_seconds` (by tier) + labeled counters: `enrichment_requests_total` (status), `cpf_discovery_total` (tier, result), `http_requests_total` (method, route_template, status). Uses `prometheus` + `axum-prometheus` crates. Required to measure the 70% to 92% enrichment rate claim.
-- [ ] **Enrichment rate baseline** — Record current enrichment success rate from production logs. Store as `docs/BASELINE_METRICS.md` with date, sample size, and rate. All future phase KPIs reference this.
-- [ ] **Migration baseline & rollback playbook** — Audit all 18 existing migrations. Verify `_sqlx_migrations` table is consistent. Document rollback procedure for every future migration. Create `migrations/README.md`.
-- [ ] **Distributed scheduler lock** — Replace local `tokio::spawn` in webhook_handler.rs with advisory lock (`pg_try_advisory_lock`) or atomic claim (`UPDATE ... WHERE claimed_at IS NULL`). Prevents duplicate processing if Fly.io runs >1 instance.
+- [x] **Parity contract document** — One-to-one mapping from comparison doc "Rust missing" rows to phase/checkbox. Published as `docs/PARITY_CONTRACT.md`. Any new feature must trace back to a comparison-doc row or an explicit "new" marker.
+- [x] **Minimal observability (Prometheus)** — `GET /metrics` endpoint with Histogram `enrichment_duration_seconds` (by tier) + labeled counters: `enrichment_requests_total` (status), `cpf_discovery_total` (tier, result), `http_requests_total` (method, route_template, status). Uses `prometheus` + `axum-prometheus` crates. Required to measure the 70% to 92% enrichment rate claim.
+- [x] **Enrichment rate baseline** — Record current enrichment success rate from production logs. Store as `docs/BASELINE_METRICS.md` with date, sample size, and rate. All future phase KPIs reference this.
+- [x] **Migration baseline & rollback playbook** — Audit all 18 existing migrations. Verify `_sqlx_migrations` table is consistent. Document rollback procedure for every future migration. Create `migrations/README.md`.
+- [x] **Distributed scheduler lock** — Replace local `tokio::spawn` in webhook_handler.rs with advisory lock (`pg_try_advisory_lock`) or atomic claim (`UPDATE ... WHERE claimed_at IS NULL`). Prevents duplicate processing if Fly.io runs >1 instance.
 - [x] **Re-enable rate limiter** — Rate limiter was disabled for local testing. Done (re-enabled in this session).
-- [ ] **Resolve tier strategy** — Current code: DBase(1st) then Mimir(2nd) then Diretrix(3rd, disabled). Planned: Work phone then Work name then DuckDB then Diretrix then DBase. Mimir is out-of-scope. **Decision: deprecate MimirService from discovery, keep for IBVI queries.** Document in ADR.
+- [x] **Resolve tier strategy** — Current code: DBase(1st) then Mimir(2nd) then Diretrix(3rd, disabled). Planned: Work phone then Work name then DuckDB then Diretrix then DBase. Mimir is out-of-scope. **Decision: deprecate MimirService from discovery, keep for IBVI queries.** Document in ADR.
 - [ ] **Party model Phase 6b** — Drop archived entity tables (safe after Feb 20, 2026). Run migration 015. Reclaim ~2.4 GB. Must complete before Phase 12b schema work.
 
 **Acceptance criteria:**
