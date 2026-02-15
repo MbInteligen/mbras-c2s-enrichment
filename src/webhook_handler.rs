@@ -9,6 +9,8 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sqlx::PgPool;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 /// C2S Webhook Handler
@@ -168,17 +170,14 @@ async fn process_webhook_event(
         updated_at_str
     );
 
-    // 1. Check if already processed (idempotency)
-    if already_processed(&state.db, &lead_id, &updated_at_ts).await? {
-        return Ok(ProcessResult::Duplicate);
-    }
-
-    // 2. Store webhook receipt
+    // 1. Atomic claim: INSERT ... ON CONFLICT DO NOTHING
+    //    Replaces the old two-step check+insert which had a TOCTOU race
+    //    when multiple Fly.io instances receive the same webhook.
     let hook_action = event.hook_action.clone();
     let payload_raw = serde_json::to_value(&event)
         .map_err(|e| AppError::InternalError(format!("Failed to serialize event: {}", e)))?;
 
-    store_webhook_receipt(
+    let claimed = try_claim_webhook(
         &state.db,
         &lead_id,
         &updated_at_ts,
@@ -187,46 +186,33 @@ async fn process_webhook_event(
     )
     .await?;
 
-    // 3. Spawn background enrichment job
+    if !claimed {
+        return Ok(ProcessResult::Duplicate);
+    }
+
+    // 2. Spawn background enrichment job (with advisory lock inside)
     spawn_enrichment_job(state.clone(), lead_id.clone(), updated_at_ts, event);
 
     Ok(ProcessResult::Processed)
 }
 
-/// Check if webhook event was already processed (idempotency check)
-async fn already_processed(
-    db: &PgPool,
-    lead_id: &str,
-    updated_at: &DateTime<Utc>,
-) -> Result<bool, AppError> {
-    let exists = sqlx::query_scalar::<_, bool>(
-        r#"
-        SELECT EXISTS(
-            SELECT 1 FROM webhook_events
-            WHERE lead_id = $1 AND updated_at = $2
-        )
-        "#,
-    )
-    .bind(lead_id)
-    .bind(updated_at)
-    .fetch_one(db)
-    .await?;
-
-    Ok(exists)
-}
-
-/// Store webhook receipt in database
-async fn store_webhook_receipt(
+/// Atomic webhook claim: INSERT ... ON CONFLICT DO NOTHING
+///
+/// Returns true if this instance won the claim (row was inserted).
+/// Returns false if another instance already claimed it (duplicate).
+/// Requires UNIQUE index on (lead_id, updated_at) -- see migration 019.
+async fn try_claim_webhook(
     db: &PgPool,
     lead_id: &str,
     updated_at: &DateTime<Utc>,
     hook_action: Option<&str>,
     payload_raw: Value,
-) -> Result<(), AppError> {
-    sqlx::query(
+) -> Result<bool, AppError> {
+    let result = sqlx::query(
         r#"
         INSERT INTO webhook_events (lead_id, updated_at, hook_action, payload_raw, status)
         VALUES ($1, $2, $3, $4, 'received')
+        ON CONFLICT (lead_id, updated_at) DO NOTHING
         "#,
     )
     .bind(lead_id)
@@ -236,20 +222,21 @@ async fn store_webhook_receipt(
     .execute(db)
     .await?;
 
-    tracing::debug!("Stored webhook receipt for lead_id={}", lead_id);
-    Ok(())
+    let claimed = result.rows_affected() > 0;
+    if claimed {
+        tracing::debug!("Claimed webhook event: lead_id={}", lead_id);
+    }
+    Ok(claimed)
 }
 
-/// Spawn background enrichment job (non-blocking)
-///
-/// This function spawns a tokio task that will:
-/// 1. Mark webhook event as 'processing'
-/// 2. Fetch full lead data from C2S
-/// 3. Extract CPF from customer data
-/// 4. Enrich via Work API
-/// 5. Store in database
-/// 6. Send enriched message back to C2S
-/// 7. Mark webhook event as 'completed' or 'failed'
+/// Compute a stable i64 hash for use as pg_try_advisory_lock key.
+/// Uses DefaultHasher (SipHash) for distribution quality.
+fn lead_lock_key(lead_id: &str) -> i64 {
+    let mut hasher = DefaultHasher::new();
+    lead_id.hash(&mut hasher);
+    hasher.finish() as i64
+}
+
 /// Spawn background enrichment job (non-blocking)
 ///
 /// This function spawns a tokio task that will:
@@ -269,9 +256,33 @@ fn spawn_enrichment_job(
     tokio::spawn(async move {
         tracing::info!("Starting background enrichment for lead_id={}", lead_id);
 
+        // Acquire advisory lock to prevent parallel enrichment of the same lead.
+        // pg_try_advisory_lock is session-scoped and auto-released on disconnect.
+        // This is defense-in-depth: the atomic claim above is the primary guard.
+        let lock_key = lead_lock_key(&lead_id);
+        let locked: bool = sqlx::query_scalar(
+            "SELECT pg_try_advisory_lock($1)"
+        )
+        .bind(lock_key)
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(false);
+
+        if !locked {
+            tracing::warn!(
+                "Advisory lock not acquired for lead_id={} (another instance processing)",
+                lead_id
+            );
+            return;
+        }
+
         // Update status to processing (with specific updated_at to target correct row)
         if let Err(e) = mark_webhook_processing(&state.db, &lead_id, &updated_at).await {
             tracing::error!("Failed to mark webhook as processing: {}", e);
+            let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+                .bind(lock_key)
+                .execute(&state.db)
+                .await;
             return;
         }
 
@@ -292,6 +303,12 @@ fn spawn_enrichment_job(
                 }
             }
         }
+
+        // Release advisory lock (session-level, must be explicitly released)
+        let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+            .bind(lock_key)
+            .execute(&state.db)
+            .await;
     });
 }
 
