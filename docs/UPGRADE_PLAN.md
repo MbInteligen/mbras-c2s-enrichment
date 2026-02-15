@@ -134,13 +134,13 @@
 
 **Priority:** URGENT — Required for CRM routing and seller prioritization
 
-- [ ] Quality score service (0-100: dataCompleteness 30, income 25, location 15, contacts 20, enrichment 10)
-- [ ] Income proxy for missing income (company capital + admin role + real estate sector, capped at 25)
-- [ ] Tier calculator (S/A/B/C/D based on score thresholds: A=90, B=70, C=50, D=30, F=0)
-- [ ] High-value detector (platinum/gold/silver/bronze/risk, uncapped score)
-- [ ] Noble neighborhood list (Jardins, Itaim, Leblon, Vila Nova Conceicao, etc.)
-- [ ] Notable family detection (Safra, Lemann, Ermirio de Moraes, etc.)
-- [ ] Corporate email detection (non-free domain = higher contact validity)
+- [x] Quality score service (0-100: dataCompleteness 30, income 25, location 15, contacts 20, enrichment 10)
+- [x] Income proxy for missing income (company capital + admin role + real estate sector, capped at 25)
+- [x] Tier calculator (S/A/B/C/D based on score thresholds: A=90, B=70, C=50, D=30, F=0)
+- [x] High-value detector (platinum/gold/silver/bronze/risk, uncapped score)
+- [x] Noble neighborhood list (Jardins, Itaim, Leblon, Vila Nova Conceicao, etc.)
+- [x] Notable family detection (Safra, Lemann, Ermirio de Moraes, etc.)
+- [x] Corporate email detection (non-free domain = higher contact validity)
 
 **Acceptance criteria:**
 - `score_lead_quality(input)` returns 0-100 with grade and breakdown
