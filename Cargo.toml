@@ -56,6 +56,9 @@ phonenumber = "0.3"
 utoipa = { version = "4", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "6", features = ["axum"] }
 
+# Metrics
+prometheus = "0.13"
+
 [dev-dependencies]
 wiremock = "0.6"
 proptest = "1.4"
