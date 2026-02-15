@@ -202,10 +202,10 @@
 
 **Priority:** MEDIUM — Real estate-specific value
 
-- [ ] IBVI property service (query `core.property_ownerships` by CPF via IBVI PostgreSQL)
-- [ ] Property portfolio summary (total value, count, built area)
-- [ ] Property message formatting for C2S
-- [ ] IPTU report generator (HTML template via `askama`, PDF via Chrome headless)
+- [x] IBVI property service (query `core.property_ownerships` by CPF via IBVI PostgreSQL)
+- [x] Property portfolio summary (total value, count, built area)
+- [x] Property message formatting for C2S
+- [x] IPTU report generator (HTML template via `askama`, PDF via Chrome headless)
 
 **Acceptance criteria:**
 - Property endpoint returns portfolio summary for a CPF
