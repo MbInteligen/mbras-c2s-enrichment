@@ -3,6 +3,8 @@ use crate::errors::AppError;
 use crate::gateway_client::C2sGatewayClient;
 use crate::models::*;
 use crate::services::{EnrichmentService, WorkApiService};
+use crate::meilisearch::MeilisearchCompanyService;
+use crate::fly_scale::FlyScaleService;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -30,6 +32,8 @@ pub struct AppState {
     /// Work API response cache (1 hour TTL) to reduce external API calls
     // Key: "all:{cpf}" or "module:{module}:{cpf}" or "cep:{cep}", Value: JSON response string
     pub work_api_cache: Cache<String, String>,
+    pub meilisearch: Arc<MeilisearchCompanyService>,
+    pub fly_scale: Arc<FlyScaleService>,
 }
 
 /// Health check endpoint
@@ -977,4 +981,78 @@ pub async fn trigger_lead_processing(
             })))
         }
     }
+}
+
+/// GET /api/v1/company/cpf/:cpf - Find companies by CPF of partner
+pub async fn get_companies_by_cpf(
+    State(state): State<Arc<AppState>>,
+    Path(cpf): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !state.meilisearch.is_enabled() {
+        return Err(AppError::InternalError(
+            "Meilisearch service not configured".to_string(),
+        ));
+    }
+
+    let summary = state.meilisearch.find_companies_by_cpf(&cpf).await;
+
+    Ok(Json(json!({
+        "success": true,
+        "cpf": cpf,
+        "totalCompanies": summary.total_companies,
+        "totalCapitalSocial": summary.total_capital_social,
+        "companies": summary.companies,
+    })))
+}
+
+/// GET /api/v1/company/cnpj/:cnpj - Get company by CNPJ
+pub async fn get_company_by_cnpj(
+    State(state): State<Arc<AppState>>,
+    Path(cnpj): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !state.meilisearch.is_enabled() {
+        return Err(AppError::InternalError(
+            "Meilisearch service not configured".to_string(),
+        ));
+    }
+
+    match state.meilisearch.get_company_by_cnpj(&cnpj).await {
+        Some(company) => Ok(Json(json!({
+            "success": true,
+            "cnpj": cnpj,
+            "company": company,
+        }))),
+        None => Err(AppError::NotFound(format!("Company not found: {}", cnpj))),
+    }
+}
+
+/// GET /api/v1/company/search - Search companies by name
+pub async fn search_companies(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !state.meilisearch.is_enabled() {
+        return Err(AppError::InternalError(
+            "Meilisearch service not configured".to_string(),
+        ));
+    }
+
+    let query = params
+        .get("q")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::BadRequest("Missing 'q' query parameter".to_string()))?;
+
+    let limit = params
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(20) as usize;
+
+    let companies = state.meilisearch.search_companies(query, limit).await;
+
+    Ok(Json(json!({
+        "success": true,
+        "query": query,
+        "total": companies.len(),
+        "companies": companies,
+    })))
 }

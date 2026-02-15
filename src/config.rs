@@ -36,6 +36,14 @@ pub struct Config {
     pub cron_interval_evening_secs: u64,    // Evening (18-23)
     pub cron_interval_night_secs: u64,      // Night (23-9)
     pub cron_enabled: bool,
+
+    // Meilisearch (65M companies)
+    pub meilisearch_url: String,
+    pub meilisearch_key: String,
+    pub meilisearch_auto_scale: bool,
+    pub meilisearch_app_name: String,
+    pub meilisearch_machine_id: Option<String>,
+    pub meilisearch_fly_api_token: Option<String>,
 }
 
 impl Config {
@@ -166,6 +174,22 @@ impl Config {
                 .ok()
                 .map(|s| s == "true" || s == "1")
                 .unwrap_or(false),
+            meilisearch_url: std::env::var("MEILISEARCH_URL")
+                .unwrap_or_else(|_| "https://ibvi-meilisearch-v2.fly.dev".to_string()),
+            meilisearch_key: std::env::var("MEILISEARCH_KEY")
+                .unwrap_or_default(),
+            meilisearch_auto_scale: std::env::var("MEILISEARCH_AUTO_SCALE")
+                .ok()
+                .map(|s| s == "true" || s == "1")
+                .unwrap_or(false),
+            meilisearch_app_name: std::env::var("MEILISEARCH_APP_NAME")
+                .unwrap_or_else(|_| "ibvi-meilisearch-v2".to_string()),
+            meilisearch_machine_id: std::env::var("MEILISEARCH_MACHINE_ID")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
+            meilisearch_fly_api_token: std::env::var("MEILISEARCH_FLY_API_TOKEN")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
             google_ads_webhook_key: std::env::var("GOOGLE_ADS_WEBHOOK_KEY")
                 .ok()
                 .filter(|s| !s.trim().is_empty()),

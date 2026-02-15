@@ -27,3 +27,6 @@ pub mod discovery;
 pub mod retry;
 pub mod batch;
 pub mod cron;
+pub mod meilisearch;
+pub mod fly_scale;
+pub mod cnpj_fallback;

@@ -21,6 +21,9 @@ mod discovery;
 mod retry;
 mod batch;
 mod cron;
+mod meilisearch;
+mod fly_scale;
+mod cnpj_fallback;
 
 use axum::{
     http::StatusCode,
@@ -175,6 +178,11 @@ async fn main() -> anyhow::Result<()> {
         processing_leads_cache,
         contact_to_cpf_cache,
         work_api_cache,
+        meilisearch: std::sync::Arc::new(crate::meilisearch::MeilisearchCompanyService::new(
+            &config.meilisearch_url,
+            &config.meilisearch_key,
+        )),
+        fly_scale: std::sync::Arc::new(crate::fly_scale::FlyScaleService::new(&config)),
     });
 
     // Configure rate limiter: 10 requests/second per IP, burst of 20
@@ -217,6 +225,10 @@ async fn main() -> anyhow::Result<()> {
             post(google_ads_handler::google_ads_webhook_handler),
         )
         // Batch enrichment endpoints
+        // Company Intelligence (Meilisearch 65M)
+        .route("/api/v1/company/cpf/:cpf", get(handlers::get_companies_by_cpf))
+        .route("/api/v1/company/cnpj/:cnpj", get(handlers::get_company_by_cnpj))
+        .route("/api/v1/company/search", get(handlers::search_companies))
         .route("/batch/enrich-direct", post(batch::enrich_direct))
         .route("/batch/retry-failed", post(batch::retry_failed))
         .layer(

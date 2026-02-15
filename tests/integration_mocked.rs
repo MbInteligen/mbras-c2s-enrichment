@@ -30,6 +30,12 @@ fn create_test_config(diretrix_base_url: String) -> Config {
         cron_interval_evening_secs: 1200,
         cron_interval_night_secs: 3600,
         cron_enabled: false,
+        meilisearch_url: "https://ibvi-meilisearch-v2.fly.dev".to_string(),
+        meilisearch_key: "".to_string(),
+        meilisearch_auto_scale: false,
+        meilisearch_app_name: "ibvi-meilisearch-v2".to_string(),
+        meilisearch_machine_id: None,
+        meilisearch_fly_api_token: None,
     }
 }
 

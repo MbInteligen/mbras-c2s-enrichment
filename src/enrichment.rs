@@ -11,6 +11,7 @@ use crate::db_storage::EnrichmentStorage;
 use crate::errors::{AppError, ResultExt};
 use crate::gateway_client::C2sGatewayClient;
 use crate::handlers::AppState;
+use crate::meilisearch::{MeilisearchCompanyService, CompanySummary};
 use crate::models::WorkApiCompleteResponse;
 use crate::discovery::CpfDiscoveryService;
 use crate::services::{C2SService, DBaseService, DiretrixService, MimirService, WorkApiService};
@@ -648,15 +649,51 @@ pub async fn enrich_and_send_workflow(
     );
     let enriched_data = enrich_cpfs_with_work_api(&cpf_result.cpfs, config).await?;
 
+    // Step 2b: Fetch company data from Meilisearch (65M companies)
+    let company_summary = if state.meilisearch.is_enabled() && !cpf_result.cpfs.is_empty() {
+        let cpf = &cpf_result.cpfs[0];
+        tracing::info!("Step 2b: Searching companies for CPF via Meilisearch");
+
+        // Auto-scale Meilisearch up before search
+        if state.fly_scale.is_enabled("meilisearch") {
+            state.fly_scale.scale_up("meilisearch").await;
+        }
+
+        let summary = state.meilisearch.find_companies_by_cpf(cpf).await;
+
+        // Schedule scale-down after search
+        if state.fly_scale.is_enabled("meilisearch") {
+            state.fly_scale.schedule_scale_down("meilisearch");
+        }
+        if summary.total_companies > 0 {
+            tracing::info!(
+                "Found {} companies, total capital: {:.2}",
+                summary.total_companies,
+                summary.total_capital_social
+            );
+        }
+        Some(summary)
+    } else {
+        None
+    };
+
     // Step 3: Format message
     tracing::info!("Step 3: Formatting enriched message");
-    let message_body = format_enriched_message_body(
+    let mut message_body = format_enriched_message_body(
         customer_name,
         phone.unwrap_or(""),
         email.unwrap_or(""),
         &enriched_data,
         cpf_result.same_person,
     );
+
+    // Append Meilisearch company data to message (replaces Work API empresas section)
+    if let Some(ref summary) = company_summary {
+        let company_msg = MeilisearchCompanyService::format_companies_for_message(summary);
+        if !company_msg.is_empty() {
+            message_body.push_str(&company_msg);
+        }
+    }
 
     // Step 4: Send to C2S
     tracing::info!(
@@ -672,6 +709,28 @@ pub async fn enrich_and_send_workflow(
     );
     let stored_entity_ids =
         store_enriched_data(db, &cpf_result.cpfs, &enriched_data, Some(lead_id)).await?;
+
+    // Step 5b: Store company data as JSONB on party
+    if let Some(ref summary) = company_summary {
+        if summary.total_companies > 0 {
+            if let Some(party_id) = stored_entity_ids.first() {
+                if let Ok(json_val) = serde_json::to_value(summary) {
+                    if let Err(e) = sqlx::query(
+                        "UPDATE analytics.parties SET company_data = $1, updated_at = now() WHERE id = $2"
+                    )
+                    .bind(&json_val)
+                    .bind(party_id)
+                    .execute(db)
+                    .await
+                    {
+                        tracing::warn!("Failed to store company_data: {}", e);
+                    } else {
+                        tracing::info!("Stored company_data for party {}", party_id);
+                    }
+                }
+            }
+        }
+    }
 
     Ok(EnrichmentResult {
         lead_id: lead_id.to_string(),
