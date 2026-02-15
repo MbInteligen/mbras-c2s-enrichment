@@ -44,6 +44,14 @@ pub struct Config {
     pub meilisearch_app_name: String,
     pub meilisearch_machine_id: Option<String>,
     pub meilisearch_fly_api_token: Option<String>,
+
+    // Twenty CRM integration
+    pub twenty_base_url: String,
+    pub twenty_api_key: String,
+    pub twenty_api_key_ws_ops: Option<String>,
+    pub twenty_api_key_ws_senior: Option<String>,
+    pub twenty_api_key_ws_general: Option<String>,
+    pub twenty_enabled: bool,
 }
 
 impl Config {
@@ -196,6 +204,23 @@ impl Config {
             c2s_default_seller_id: std::env::var("C2S_DEFAULT_SELLER_ID")
                 .ok()
                 .filter(|s| !s.trim().is_empty()),
+            twenty_base_url: std::env::var("TWENTY_BASE_URL")
+                .unwrap_or_else(|_| "https://twenty-server-production-1c77.up.railway.app".to_string()),
+            twenty_api_key: std::env::var("TWENTY_API_KEY")
+                .unwrap_or_default(),
+            twenty_api_key_ws_ops: std::env::var("TWENTY_API_KEY_WS_OPS")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
+            twenty_api_key_ws_senior: std::env::var("TWENTY_API_KEY_WS_SENIOR")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
+            twenty_api_key_ws_general: std::env::var("TWENTY_API_KEY_WS_GENERAL")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
+            twenty_enabled: std::env::var("TWENTY_ENABLED")
+                .ok()
+                .map(|s| s == "true" || s == "1")
+                .unwrap_or(false),
             c2s_description_max_length: {
                 let max_len = std::env::var("C2S_DESCRIPTION_MAX_LENGTH")
                     .ok()

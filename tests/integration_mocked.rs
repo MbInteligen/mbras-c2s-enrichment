@@ -36,6 +36,12 @@ fn create_test_config(diretrix_base_url: String) -> Config {
         meilisearch_app_name: "ibvi-meilisearch-v2".to_string(),
         meilisearch_machine_id: None,
         meilisearch_fly_api_token: None,
+        twenty_base_url: "https://twenty.example.com".to_string(),
+        twenty_api_key: "test_twenty_key".to_string(),
+        twenty_api_key_ws_ops: None,
+        twenty_api_key_ws_senior: None,
+        twenty_api_key_ws_general: None,
+        twenty_enabled: false,
     }
 }
 

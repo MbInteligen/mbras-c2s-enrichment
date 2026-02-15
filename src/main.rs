@@ -33,6 +33,8 @@ mod ibvi_property;
 mod domain_analyzer;
 mod risk_detector;
 mod web_search;
+mod c2s_extended;
+mod twenty;
 
 use axum::{
     extract::{Path, State},
@@ -404,4 +406,345 @@ async fn property_by_cpf_handler(
             "message": "No properties found",
         }))).into_response(),
     }
+}
+
+// ─── Phase 7: C2S Extended Handlers ─────────────────────────────────────────
+
+async fn list_sellers_handler(
+    State(state): State<Arc<handlers::AppState>>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.list_sellers().await {
+        Ok(sellers) => Ok(axum::Json(serde_json::json!({ "data": sellers }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn get_seller_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(id): Path<String>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.get_seller(&id).await {
+        Ok(Some(seller)) => Ok(axum::Json(serde_json::json!({ "data": seller }))),
+        Ok(None) => Err((StatusCode::NOT_FOUND, "Seller not found".to_string())),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn create_seller_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    axum::Json(input): axum::Json<c2s_extended::SellerCreateInput>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.create_seller(&input).await {
+        Ok(seller) => Ok(axum::Json(serde_json::json!({ "data": seller }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn update_seller_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(id): Path<String>,
+    axum::Json(input): axum::Json<c2s_extended::SellerUpdateInput>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.update_seller(&id, &input).await {
+        Ok(seller) => Ok(axum::Json(serde_json::json!({ "data": seller }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn list_tags_handler(
+    State(state): State<Arc<handlers::AppState>>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.list_tags().await {
+        Ok(tags) => Ok(axum::Json(serde_json::json!({ "data": tags }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn create_tag_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    axum::Json(input): axum::Json<c2s_extended::TagCreateInput>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.create_tag(&input).await {
+        Ok(tag) => Ok(axum::Json(serde_json::json!({ "data": tag }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn get_lead_tags_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.get_lead_tags(&lead_id).await {
+        Ok(tags) => Ok(axum::Json(serde_json::json!({ "data": tags }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn add_tag_to_lead_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let tag_id = body.get("tag_id").and_then(|v| v.as_str())
+        .ok_or((StatusCode::BAD_REQUEST, "Missing tag_id".to_string()))?;
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.add_tag_to_lead(&lead_id, tag_id).await {
+        Ok(_) => Ok(axum::Json(serde_json::json!({ "success": true }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn register_activity_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+    axum::Json(input): axum::Json<c2s_extended::ActivityInput>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.register_activity(&lead_id, &input).await {
+        Ok(result) => Ok(axum::Json(result)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn add_note_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let note = body.get("body").and_then(|v| v.as_str())
+        .ok_or((StatusCode::BAD_REQUEST, "Missing body".to_string()))?;
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.add_note(&lead_id, note).await {
+        Ok(_) => Ok(axum::Json(serde_json::json!({ "success": true }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn forward_lead_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+    axum::Json(input): axum::Json<c2s_extended::ForwardInput>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.forward_lead(&lead_id, &input).await {
+        Ok(_) => Ok(axum::Json(serde_json::json!({ "success": true }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn search_by_phone_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(phone): Path<String>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.search_by_phone(&phone).await {
+        Ok(results) => Ok(axum::Json(serde_json::json!({ "data": results }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn search_by_email_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(email): Path<String>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.search_by_email(&email).await {
+        Ok(results) => Ok(axum::Json(serde_json::json!({ "data": results }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn enrichment_status_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    match c2s_extended::C2sExtendedService::get_enrichment_status(&state.db, &lead_id).await {
+        Ok(Some(record)) => Ok(axum::Json(serde_json::json!({ "data": record }))),
+        Ok(None) => Err((StatusCode::NOT_FOUND, "Lead not found".to_string())),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn distribute_leads_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    axum::Json(input): axum::Json<c2s_extended::QueueDistributeInput>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.distribute_leads(&input).await {
+        Ok(result) => Ok(axum::Json(result)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn auto_assign_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    axum::Json(input): axum::Json<c2s_extended::QueueAutoAssignInput>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.auto_assign(&input).await {
+        Ok(result) => Ok(axum::Json(result)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+// ─── Phase 8: Twenty CRM Handlers ──────────────────────────────────────────
+
+async fn twenty_create_lead_handler(
+    State(_state): State<Arc<handlers::AppState>>,
+    axum::Json(input): axum::Json<twenty::TwentyLeadInput>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = twenty_service_from_config(&_state.config);
+    match svc.create_lead(&input).await {
+        Ok(lead) => Ok(axum::Json(serde_json::json!({ "data": lead }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn twenty_get_lead_handler(
+    State(_state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = twenty_service_from_config(&_state.config);
+    match svc.find_lead(&lead_id).await {
+        Ok(Some(lead)) => Ok(axum::Json(serde_json::json!({ "data": lead }))),
+        Ok(None) => Err((StatusCode::NOT_FOUND, "Lead not found".to_string())),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn twenty_delegate_handler(
+    State(_state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = twenty_service_from_config(&_state.config);
+    let tier = body.get("tier").and_then(|v| v.as_str()).unwrap_or("C");
+    let reason: twenty::DelegationReason = serde_json::from_value(
+        body.get("reason").cloned().unwrap_or(serde_json::json!("workload"))
+    ).unwrap_or(twenty::DelegationReason::Workload);
+
+    let input = twenty::DelegateInput {
+        lead_id: lead_id.clone(),
+        to_workspace: twenty::Workspace::WsGeneral,
+        reason,
+        delegated_by: body.get("delegated_by").and_then(|v| v.as_str()).map(String::from),
+    };
+
+    let delegation = svc.create_delegation_with_tier(&input, tier);
+    Ok(axum::Json(serde_json::json!({ "data": delegation })))
+}
+
+async fn twenty_sla_handler(
+    State(_state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = twenty_service_from_config(&_state.config);
+    let tier = params.get("tier").map(|s| s.as_str()).unwrap_or("C");
+    let created_at = params.get("created_at")
+        .ok_or((StatusCode::BAD_REQUEST, "Missing created_at".to_string()))?;
+
+    match svc.check_sla(tier, created_at) {
+        Ok(check) => Ok(axum::Json(serde_json::json!({ "data": check }))),
+        Err(e) => Err((StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+async fn twenty_next_action_handler(
+    State(_state): State<Arc<handlers::AppState>>,
+    Path(_lead_id): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = twenty_service_from_config(&_state.config);
+    let status = params.get("status").map(|s| s.as_str()).unwrap_or("novo");
+    let tier = params.get("tier").map(|s| s.as_str()).unwrap_or("C");
+    let action = svc.get_next_action(status, tier);
+    Ok(axum::Json(serde_json::json!({ "data": action })))
+}
+
+async fn twenty_intent_signal_handler(
+    State(_state): State<Arc<handlers::AppState>>,
+    axum::Json(input): axum::Json<twenty::IntentSignalInput>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = twenty_service_from_config(&_state.config);
+    let signal = svc.calculate_intent_signal(&input);
+    Ok(axum::Json(serde_json::json!({ "signal": signal })))
+}
+
+async fn twenty_pipeline_stats_handler(
+    State(_state): State<Arc<handlers::AppState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = twenty_service_from_config(&_state.config);
+    let ws = match params.get("workspace").map(|s| s.as_str()) {
+        Some("senior") => twenty::Workspace::WsSenior,
+        Some("ops") => twenty::Workspace::WsOps,
+        _ => twenty::Workspace::WsGeneral,
+    };
+    match svc.get_pipeline_stats(ws).await {
+        Ok(stats) => Ok(axum::Json(serde_json::json!({ "data": stats }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn twenty_broker_stats_handler(
+    State(_state): State<Arc<handlers::AppState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = twenty_service_from_config(&_state.config);
+    let ws = match params.get("workspace").map(|s| s.as_str()) {
+        Some("senior") => twenty::Workspace::WsSenior,
+        Some("ops") => twenty::Workspace::WsOps,
+        _ => twenty::Workspace::WsGeneral,
+    };
+    match svc.get_broker_stats(ws).await {
+        Ok(stats) => Ok(axum::Json(serde_json::json!({ "data": stats }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn twenty_sla_violations_handler(
+    State(_state): State<Arc<handlers::AppState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = twenty_service_from_config(&_state.config);
+    let ws = match params.get("workspace").map(|s| s.as_str()) {
+        Some("senior") => twenty::Workspace::WsSenior,
+        Some("ops") => twenty::Workspace::WsOps,
+        _ => twenty::Workspace::WsGeneral,
+    };
+    match svc.check_sla_violations(ws).await {
+        Ok(violations) => Ok(axum::Json(serde_json::json!({ "data": violations }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn twenty_bulk_import_handler(
+    State(_state): State<Arc<handlers::AppState>>,
+    axum::Json(input): axum::Json<twenty::BulkImportInput>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = twenty_service_from_config(&_state.config);
+    match svc.bulk_import(&input).await {
+        Ok(result) => Ok(axum::Json(serde_json::json!({ "data": result }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+/// Helper to construct TwentyService from config
+fn twenty_service_from_config(config: &config::Config) -> twenty::TwentyService {
+    twenty::TwentyService::new(
+        &config.twenty_base_url,
+        &config.twenty_api_key,
+        config.twenty_api_key_ws_ops.as_deref(),
+        config.twenty_api_key_ws_senior.as_deref(),
+        config.twenty_api_key_ws_general.as_deref(),
+        config.twenty_enabled,
+    )
 }
