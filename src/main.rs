@@ -13,6 +13,8 @@ mod models;
 mod services;
 mod webhook_handler;
 mod webhook_models;
+mod obs;
+mod scoring;
 
 use axum::{
     http::StatusCode,
@@ -221,10 +223,14 @@ async fn main() -> anyhow::Result<()> {
     // Build final app with health check (bypasses rate limiting for Fly.io)
     let app = Router::new()
         .route("/health", get(handlers::health))
+        .route("/metrics", get(serve_metrics))
         .merge(protected_routes)
         .with_state(app_state)
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive());
+
+    // Initialize Prometheus metrics
+    obs::metrics::init();
 
     // Start server
     let addr = format!("0.0.0.0:{}", config.port);
@@ -234,4 +240,14 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+/// GET /metrics — Prometheus metrics endpoint
+async fn serve_metrics() -> impl IntoResponse {
+    let body = obs::metrics::render();
+    (
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+        body,
+    )
 }
