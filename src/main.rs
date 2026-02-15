@@ -28,9 +28,13 @@ mod alert;
 mod enrichment_monitor;
 mod dashboard;
 mod api_auth;
+mod lead_analysis;
+mod domain_analyzer;
+mod risk_detector;
+mod web_search;
 
 use axum::{
-    extract::State,
+    extract::{Path, State},
     middleware as axum_middleware,
     http::StatusCode,
     response::IntoResponse,
@@ -257,6 +261,9 @@ async fn main() -> anyhow::Result<()> {
         // Stats routes
         .route("/stats/enrichment", get(enrichment_stats_handler))
         .route("/stats/health", get(service_health_handler))
+        // Lead analysis endpoint
+        .route("/api/v1/analyze/:lead_id", post(analyze_lead_handler))
+        .route("/api/v1/analysis/:lead_id", get(get_analysis_handler))
         .layer(axum_middleware::from_fn(api_auth::api_key_auth))
         .layer(
             ServiceBuilder::new()
@@ -339,4 +346,37 @@ async fn service_health_handler(
         StatusCode::SERVICE_UNAVAILABLE
     };
     (status, axum::Json(serde_json::json!(health)))
+}
+
+/// POST /api/v1/analyze/:lead_id — analyze a lead
+async fn analyze_lead_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+) -> impl IntoResponse {
+    let svc = lead_analysis::LeadAnalysisService::new(state.db.clone());
+    let input = lead_analysis::LeadAnalysisInput {
+        lead_id,
+        name: "".to_string(), // Will be filled from DB lookup
+        email: None,
+        phone: None,
+        cpf: None,
+        income: None,
+    };
+    let result = svc.analyze(&input).await;
+    (StatusCode::OK, axum::Json(serde_json::json!(result)))
+}
+
+/// GET /api/v1/analysis/:lead_id — get cached analysis
+async fn get_analysis_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+) -> impl IntoResponse {
+    let svc = lead_analysis::LeadAnalysisService::new(state.db.clone());
+    match svc.get_cached(&lead_id).await {
+        Some(result) => (StatusCode::OK, axum::Json(serde_json::json!(result))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            axum::Json(serde_json::json!({"error": "No analysis found for this lead"})),
+        ).into_response(),
+    }
 }

@@ -34,3 +34,7 @@ pub mod alert;
 pub mod enrichment_monitor;
 pub mod dashboard;
 pub mod api_auth;
+pub mod web_search;
+pub mod risk_detector;
+pub mod domain_analyzer;
+pub mod lead_analysis;
