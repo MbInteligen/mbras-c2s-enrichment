@@ -212,7 +212,7 @@ async fn main() -> anyhow::Result<()> {
             ServiceBuilder::new()
                 // Request size limit: 5MB max payload (prevents memory exhaustion)
                 .layer(RequestBodyLimitLayer::new(5 * 1024 * 1024))
-                // Rate limiting: 10 req/sec per IP, burst of 20 (prevents DDoS)
+                // Rate limiting: 10 requests/second per IP, burst of 20
                 .layer(GovernorLayer {
                     config: governor_conf,
                 }),

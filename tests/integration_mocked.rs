@@ -21,6 +21,8 @@ fn create_test_config(diretrix_base_url: String) -> Config {
         google_ads_webhook_key: Some("test_google_key".to_string()),
         c2s_default_seller_id: Some("test_seller".to_string()),
         c2s_description_max_length: 1000,
+        dbase_key: "test_dbase_key".to_string(),
+        mimir_token: "test_mimir_token".to_string(),
     }
 }
 

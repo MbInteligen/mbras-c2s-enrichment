@@ -15,8 +15,14 @@ pub struct WorkApiService {
 
 impl WorkApiService {
     pub fn new(config: &Config) -> Self {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
         Self {
-            client: Client::new(),
+            client,
             base_url: "https://completa.workbuscas.com".to_string(),
             api_token: config.worker_api_key.clone(),
         }
@@ -653,8 +659,14 @@ pub struct C2SService {
 
 impl C2SService {
     pub fn new(config: &Config) -> Self {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
         Self {
-            client: Client::new(),
+            client,
             base_url: config.c2s_base_url.clone(),
             token: config.c2s_token.clone(),
         }
@@ -793,6 +805,7 @@ impl C2SService {
         source: Option<&str>,
         product: Option<&str>,
         seller_id: Option<&str>,
+        product_description: Option<&str>,
     ) -> Result<String, AppError> {
         let url = format!("{}/integration/leads", self.base_url);
 
@@ -814,6 +827,13 @@ impl C2SService {
         }
         if let Some(seller_val) = seller_id {
             attributes.insert("seller_id".to_string(), json!(seller_val));
+        }
+        // Product description (campaign name for Google Ads leads)
+        if let Some(product_desc) = product_description {
+            attributes.insert(
+                "product_attributes".to_string(),
+                json!({"description": product_desc}),
+            );
         }
 
         let payload = json!({
@@ -948,8 +968,14 @@ pub struct DiretrixService {
 
 impl DiretrixService {
     pub fn new(config: &Config) -> Self {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
         Self {
-            client: Client::new(),
+            client,
             base_url: config.diretrix_base_url.clone(),
             username: config.diretrix_user.clone(),
             password: config.diretrix_pass.clone(),
@@ -1135,8 +1161,14 @@ pub struct DBaseService {
 
 impl DBaseService {
     pub fn new(config: &Config) -> Self {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
         Self {
-            client: Client::new(),
+            client,
             // Note: URL must have trailing slash per API spec
             base_url: "https://app.dbase.com.br/sistema/consultas/Data-basebrasil-api2024/"
                 .to_string(),
@@ -1247,6 +1279,7 @@ impl DBaseService {
         }
     }
 
+    #[allow(dead_code)]
     /// Search person by name using DBase API
     ///
     /// # Arguments
@@ -1295,5 +1328,242 @@ impl DBaseService {
                 Ok(None)
             }
         }
+    }
+}
+
+// ============ Mimir API Integration (Azure IBVI) ============
+
+/// Mimir API Service - Azure-hosted IBVI data lookup service
+///
+/// Provides comprehensive person lookup by phone number with:
+/// - CPF, full name, birth date, gender, parents names
+/// - Multiple email addresses
+/// - Multiple phone numbers
+/// - Complete address history with CEP
+/// - Education level, marital status, nationality
+///
+/// **Advantages over DBase:**
+/// - No IP whitelisting required (uses Bearer token auth)
+/// - Batch lookup support (multiple phones in single request)
+/// - Richer data with more fields
+/// - Hosted on Azure with better uptime
+///
+/// **API Format:**
+/// - Method: POST
+/// - Auth: Bearer token in Authorization header
+/// - Body: JSON with `{"q": ["phone1", "phone2", ...]}`
+/// - Response: Structured JSON with nested person data
+pub struct MimirService {
+    client: Client,
+    base_url: String,
+    api_token: String,
+}
+
+impl MimirService {
+    pub fn new(config: &Config) -> Self {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
+        Self {
+            client,
+            base_url: "https://ibvi-mimir.ashygrass-6acf749b.brazilsouth.azurecontainerapps.io/api/v1/search/telefone-simplified".to_string(),
+            api_token: config.mimir_token.clone(),
+        }
+    }
+
+    /// Search person by phone number using Mimir API
+    ///
+    /// Mimir API accepts phone numbers WITHOUT country code (just DDD + number)
+    ///
+    /// # Arguments
+    /// * `phone` - Phone number to search (will be normalized to remove country code)
+    ///
+    /// # Returns
+    /// * `Ok(Some(pessoa))` - Person data found
+    /// * `Ok(None)` - No data found
+    /// * `Err(AppError)` - Request failed
+    ///
+    /// # Example
+    /// ```rust
+    /// let result = mimir_service.search_by_phone("11999999999").await?;
+    /// if let Some(pessoa) = result {
+    ///     println!("Found: {} - CPF: {}", pessoa.dados_basicos.nome, pessoa.dados_basicos.cpf);
+    /// }
+    /// ```
+    pub async fn search_by_phone(
+        &self,
+        phone: &str,
+    ) -> Result<Option<crate::models::MimirPessoa>, AppError> {
+        // Normalize phone - remove non-digits
+        let phone_clean: String = phone.chars().filter(|c| c.is_ascii_digit()).collect();
+
+        // Remove country code if present (55 for Brazil)
+        let phone_normalized = if phone_clean.starts_with("55") && phone_clean.len() > 2 {
+            &phone_clean[2..]
+        } else {
+            &phone_clean
+        };
+
+        tracing::info!(
+            "Mimir: Searching by phone: {} (normalized: {})",
+            phone,
+            phone_normalized
+        );
+
+        // Build JSON request body with phone array
+        let request_body = serde_json::json!({
+            "q": [phone_normalized]
+        });
+
+        let response = self
+            .client
+            .post(&self.base_url)
+            .header("Authorization", format!("Bearer {}", self.api_token))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::warn!("Mimir API request failed: {}", e);
+                AppError::ExternalApiError(format!("Mimir phone search failed: {}", e))
+            })?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            tracing::warn!("Mimir API returned error status {}: {}", status, error_text);
+            return Ok(None);
+        }
+
+        let response_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to get response text".to_string());
+
+        tracing::debug!(
+            "Mimir API response: {}",
+            &response_text[..response_text.len().min(500)]
+        );
+
+        // Parse JSON response - try both formats
+        // Format 1: Wrapped response with results array
+        match serde_json::from_str::<crate::models::MimirPhoneResponse>(&response_text) {
+            Ok(data) => {
+                if data.status == 1 && !data.data.results.is_empty() {
+                    let result = &data.data.results[0];
+                    if result.success {
+                        if let Some(ref person_data) = result.data {
+                            if !person_data.pessoas.is_empty() {
+                                let pessoa = &person_data.pessoas[0];
+                                tracing::info!(
+                                    "✓ Mimir found person: {} - CPF: {}",
+                                    pessoa.dados_basicos.nome,
+                                    pessoa.dados_basicos.cpf
+                                );
+                                return Ok(Some(pessoa.clone()));
+                            }
+                        }
+                    } else if let Some(ref error) = result.error {
+                        tracing::info!("Mimir error for phone {}: {}", phone, error.message);
+                    }
+                }
+                tracing::info!("Mimir: No person found for phone {}", phone);
+                Ok(None)
+            }
+            Err(_) => {
+                // Format 2: Direct response with pessoas array (no results wrapper)
+                match serde_json::from_str::<crate::models::MimirDirectResponse>(&response_text) {
+                    Ok(data) => {
+                        if data.status == 1 && !data.data.pessoas.is_empty() {
+                            let pessoa = &data.data.pessoas[0];
+                            tracing::info!(
+                                "✓ Mimir found person (direct format): {} - CPF: {}",
+                                pessoa.dados_basicos.nome,
+                                pessoa.dados_basicos.cpf
+                            );
+                            return Ok(Some(pessoa.clone()));
+                        }
+                        tracing::info!("Mimir: No person found for phone {}", phone);
+                        Ok(None)
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to parse Mimir response (both formats): {} - raw: {}",
+                            e,
+                            &response_text[..response_text.len().min(200)]
+                        );
+                        Ok(None)
+                    }
+                }
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    /// Batch search multiple phone numbers (more efficient than individual calls)
+    ///
+    /// # Arguments
+    /// * `phones` - List of phone numbers to search
+    ///
+    /// # Returns
+    /// * `Ok(Vec<MimirPessoa>)` - Found people (may be fewer than input if some not found)
+    pub async fn search_batch(
+        &self,
+        phones: &[String],
+    ) -> Result<Vec<crate::models::MimirPessoa>, AppError> {
+        if phones.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Normalize all phones
+        let phones_normalized: Vec<String> = phones
+            .iter()
+            .map(|p| {
+                let clean: String = p.chars().filter(|c| c.is_ascii_digit()).collect();
+                if clean.starts_with("55") && clean.len() > 2 {
+                    clean[2..].to_string()
+                } else {
+                    clean
+                }
+            })
+            .collect();
+
+        tracing::info!("Mimir: Batch searching {} phones", phones_normalized.len());
+
+        let request_body = serde_json::json!({
+            "q": phones_normalized
+        });
+
+        let response = self
+            .client
+            .post(&self.base_url)
+            .header("Authorization", format!("Bearer {}", self.api_token))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| AppError::ExternalApiError(format!("Mimir batch search failed: {}", e)))?;
+
+        let data: crate::models::MimirPhoneResponse = response.json().await.map_err(|e| {
+            AppError::ExternalApiError(format!("Failed to parse Mimir batch response: {}", e))
+        })?;
+
+        let mut people = Vec::new();
+        for result in data.data.results {
+            if result.success {
+                if let Some(person_data) = result.data {
+                    if !person_data.pessoas.is_empty() {
+                        people.extend(person_data.pessoas);
+                    }
+                }
+            }
+        }
+
+        tracing::info!("✓ Mimir batch found {} people", people.len());
+        Ok(people)
     }
 }

@@ -21,6 +21,7 @@ use std::time::Duration;
 ///     sqlx::query("SELECT * FROM users").fetch_all(&pool).await
 /// }).await;
 /// ```
+#[allow(dead_code)]
 pub fn create_db_circuit_breaker() -> impl failsafe::CircuitBreaker {
     let backoff_strategy = backoff::exponential(
         Duration::from_secs(10), // Initial delay

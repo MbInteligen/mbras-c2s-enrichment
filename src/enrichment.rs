@@ -12,7 +12,7 @@ use crate::errors::{AppError, ResultExt};
 use crate::gateway_client::C2sGatewayClient;
 use crate::handlers::AppState;
 use crate::models::WorkApiCompleteResponse;
-use crate::services::{C2SService, DBaseService, DiretrixService, WorkApiService};
+use crate::services::{C2SService, DBaseService, DiretrixService, MimirService, WorkApiService};
 use phonenumber::country::Id as CountryId;
 use phonenumber::Mode;
 use regex::Regex;
@@ -232,8 +232,9 @@ pub async fn find_cpf_via_diretrix(
     email: Option<&str>,
     config: &Config,
 ) -> Result<CpfLookupResult, AppError> {
-    let diretrix_service = DiretrixService::new(config);
+    let _diretrix_service = DiretrixService::new(config); // Only for Step 3 (disabled)
     let dbase_service = DBaseService::new(config);
+    let mimir_service = MimirService::new(config);
 
     // Validate and normalize phone before lookup
     let validated_phone = if let Some(phone_number) = phone {
@@ -256,7 +257,7 @@ pub async fn find_cpf_via_diretrix(
     };
 
     // Validate email before lookup
-    let validated_email = if let Some(email_addr) = email {
+    let _validated_email = if let Some(email_addr) = email {
         if !email_addr.is_empty() && is_valid_email(email_addr) {
             Some(email_addr.to_string())
         } else {
@@ -272,10 +273,11 @@ pub async fn find_cpf_via_diretrix(
         None
     };
 
-    // Try DBase FIRST for phone lookup (primary source)
+    // 3-Tier Fallback for Phone Lookup: DBase (1st) → Mimir (2nd) → Diretrix (3rd)
     let mut phone_lookup: Option<Vec<crate::services::DiretrixPersonSearch>> = None;
 
     if let Some(ref phone_number) = validated_phone {
+        // Step 1: Try DBase FIRST (primary source)
         tracing::info!("Step 1: Trying DBase first for phone lookup");
         match dbase_service.search_by_phone(phone_number).await {
             Ok(Some(dbase_data)) => {
@@ -287,41 +289,69 @@ pub async fn find_cpf_via_diretrix(
                         cpf,
                     }]);
                 } else {
-                    tracing::info!("DBase returned data but no CPF, will try Diretrix");
+                    tracing::info!("DBase returned data but no CPF, will try Mimir");
                 }
             }
             Ok(None) => {
-                tracing::info!("DBase returned no data, will try Diretrix");
+                tracing::info!("DBase returned no data, will try Mimir");
             }
             Err(e) => {
-                tracing::warn!("DBase lookup failed: {}, will try Diretrix", e);
+                tracing::warn!("DBase lookup failed: {}, will try Mimir", e);
             }
         }
-    }
 
-    // If DBase didn't find CPF, try Diretrix as fallback for phone
-    let should_try_diretrix =
-        phone_lookup.is_none() || phone_lookup.as_ref().map_or(false, |v| v.is_empty());
+        // Step 2: If DBase didn't find CPF, try Mimir as secondary fallback
+        let should_try_mimir =
+            phone_lookup.is_none() || phone_lookup.as_ref().map_or(false, |v| v.is_empty());
 
-    if should_try_diretrix && validated_phone.is_some() {
-        tracing::info!("Step 2: DBase phone lookup failed/empty, trying Diretrix fallback");
-        if let Some(ref phone_number) = validated_phone {
-            phone_lookup = diretrix_service.search_by_phone(phone_number).await.ok();
-            if let Some(ref results) = phone_lookup {
-                if !results.is_empty() {
-                    tracing::info!("✓ Diretrix fallback found {} result(s)", results.len());
+        if should_try_mimir {
+            tracing::info!("Step 2: DBase phone lookup failed/empty, trying Mimir fallback");
+            match mimir_service.search_by_phone(phone_number).await {
+                Ok(Some(mimir_data)) => {
+                    let cpf = mimir_data.dados_basicos.cpf.clone();
+                    tracing::info!("✓ Mimir found CPF: {}", cpf);
+                    // Convert Mimir response to Diretrix format for compatibility
+                    phone_lookup = Some(vec![crate::services::DiretrixPersonSearch {
+                        nome: mimir_data.dados_basicos.nome,
+                        cpf,
+                    }]);
+                }
+                Ok(None) => {
+                    tracing::info!("Mimir returned no data");
+                }
+                Err(e) => {
+                    tracing::warn!("Mimir lookup failed: {}", e);
                 }
             }
         }
+
+        // // Step 3: If both DBase and Mimir failed, try Diretrix as final fallback
+        // let should_try_diretrix =
+        //     phone_lookup.is_none() || phone_lookup.as_ref().map_or(false, |v| v.is_empty());
+
+        // if should_try_diretrix {
+        //     tracing::info!("Step 3: DBase and Mimir phone lookup failed/empty, trying Diretrix as final fallback");
+        //     phone_lookup = diretrix_service.search_by_phone(phone_number).await.ok();
+        //     if let Some(ref results) = phone_lookup {
+        //         if !results.is_empty() {
+        //             tracing::info!(
+        //                 "✓ Diretrix final fallback found {} result(s)",
+        //                 results.len()
+        //             );
+        //         }
+        //     }
+        // }
     }
 
+    // TEMPORARILY DISABLED FOR LOCAL TESTING: Skip email lookup
     // For email, still use Diretrix (DBase doesn't have email lookup)
-    let email_lookup = if let Some(ref email_addr) = validated_email {
-        tracing::info!("Searching by email via Diretrix");
-        diretrix_service.search_by_email(email_addr).await.ok()
-    } else {
-        None
-    };
+    // let email_lookup = if let Some(ref email_addr) = validated_email {
+    //     tracing::info!("Searching by email via Diretrix");
+    //     diretrix_service.search_by_email(email_addr).await.ok()
+    // } else {
+    //     None
+    // };
+    let email_lookup: Option<Vec<crate::services::DiretrixPersonSearch>> = None;
 
     // Debug: Log final results
     tracing::info!(

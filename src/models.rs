@@ -32,6 +32,7 @@ pub struct Party {
 pub type Customer = Party;
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Person {
     pub party_id: Uuid,
     pub full_name: String,
@@ -45,6 +46,7 @@ pub struct Person {
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Company {
     pub party_id: Uuid,
     pub legal_name: String,
@@ -312,6 +314,7 @@ pub struct CustomerQueryParams {
 pub type WorkApiCompleteResponse = serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct WorkApiModule {
     pub status: String,
     pub data: Option<serde_json::Value>,
@@ -575,5 +578,93 @@ pub struct DBaseAddress {
     /// State (UF)
     pub uf: Option<String>,
     /// Postal code (CEP)
+    pub cep: Option<String>,
+}
+
+// ============ Mimir API Models (Azure IBVI) ============
+
+/// Mimir API phone lookup response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MimirPhoneResponse {
+    pub status: i32,
+    pub data: MimirData,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MimirData {
+    pub total: i32,
+    pub results: Vec<MimirResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MimirResult {
+    pub documento: String,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<MimirPersonData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<MimirError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MimirError {
+    pub error: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MimirPersonData {
+    pub pessoas: Vec<MimirPessoa>,
+    pub total: i32,
+}
+
+/// Alternative Mimir response format (direct pessoas without results wrapper)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MimirDirectResponse {
+    pub status: i32,
+    pub data: MimirPersonData,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MimirPessoa {
+    pub dados_basicos: MimirDadosBasicos,
+    pub emails: Option<Vec<MimirEmail>>,
+    pub telefones: Option<Vec<MimirTelefone>>,
+    pub enderecos: Option<Vec<MimirEndereco>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MimirDadosBasicos {
+    pub nome: String,
+    pub cpf: String,
+    pub data_nascimento: Option<String>,
+    pub sexo: Option<String>,
+    pub nome_mae: Option<String>,
+    pub nome_pai: Option<String>,
+    pub municipio_nascimento: Option<String>,
+    pub escolaridade: Option<String>,
+    pub estado_civil: Option<String>,
+    pub nacionalidade: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MimirEmail {
+    pub email: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MimirTelefone {
+    pub telefone: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MimirEndereco {
+    pub tipo_logradouro: Option<String>,
+    pub logradouro: Option<String>,
+    pub logradouro_numero: Option<String>,
+    pub complemento: Option<String>,
+    pub bairro: Option<String>,
+    pub cidade: Option<String>,
+    pub uf: Option<String>,
     pub cep: Option<String>,
 }
