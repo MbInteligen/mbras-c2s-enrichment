@@ -22,7 +22,14 @@ fn create_test_config(diretrix_base_url: String) -> Config {
         c2s_default_seller_id: Some("test_seller".to_string()),
         c2s_description_max_length: 1000,
         dbase_key: "test_dbase_key".to_string(),
-        mimir_token: "test_mimir_token".to_string(),
+        mimir_token: Some("test_mimir_token".to_string()),
+        cpf_lookup_api_url: "https://cpf-lookup-api.fly.dev".to_string(),
+        cpf_lookup_timeout_ms: 120_000,
+        income_multiplier: 1.9,
+        cron_interval_business_secs: 300,
+        cron_interval_evening_secs: 1200,
+        cron_interval_night_secs: 3600,
+        cron_enabled: false,
     }
 }
 
