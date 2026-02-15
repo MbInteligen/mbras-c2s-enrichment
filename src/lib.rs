@@ -26,3 +26,4 @@ pub mod name_matcher;
 pub mod discovery;
 pub mod retry;
 pub mod batch;
+pub mod cron;

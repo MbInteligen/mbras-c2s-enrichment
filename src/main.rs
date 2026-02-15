@@ -20,6 +20,7 @@ mod name_matcher;
 mod discovery;
 mod retry;
 mod batch;
+mod cron;
 
 use axum::{
     http::StatusCode,
@@ -228,6 +229,10 @@ async fn main() -> anyhow::Result<()> {
                 }),
         );
 
+    // Clone app_state for cron before router consumes it
+    let cron_state = app_state.clone();
+    let cron_enabled = config.cron_enabled;
+
     // Build final app with health check (bypasses rate limiting for Fly.io)
     let app = Router::new()
         .route("/health", get(handlers::health))
@@ -239,6 +244,17 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize Prometheus metrics
     obs::metrics::init();
+
+    // Start enrichment cron if enabled
+    if cron_enabled {
+        tokio::spawn(cron::start_enrichment_cron(cron_state));
+        tracing::info!("Enrichment cron enabled (business: {}s, evening: {}s, night: {}s)",
+            config.cron_interval_business_secs,
+            config.cron_interval_evening_secs,
+            config.cron_interval_night_secs);
+    } else {
+        tracing::info!("Enrichment cron disabled (set ENABLE_CRON=true to enable)");
+    }
 
     // Start server
     let addr = format!("0.0.0.0:{}", config.port);

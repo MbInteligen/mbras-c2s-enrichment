@@ -190,10 +190,77 @@ async fn process_webhook_event(
         return Ok(ProcessResult::Duplicate);
     }
 
-    // 2. Spawn background enrichment job (with advisory lock inside)
+    // 2. Auto-save lead to analytics.c2s_leads (before enrichment, never lose a lead)
+    if let Err(e) = upsert_c2s_lead(&state.db, &event).await {
+        tracing::warn!("Failed to auto-save lead {}: {} (enrichment continues)", lead_id, e);
+    }
+
+    // 3. Spawn background enrichment job (with advisory lock inside)
     spawn_enrichment_job(state.clone(), lead_id.clone(), updated_at_ts, event);
 
     Ok(ProcessResult::Processed)
+}
+
+/// Auto-save webhook lead to analytics.c2s_leads.
+///
+/// Persists lead data before enrichment starts, ensuring no lead is lost
+/// even if enrichment fails. Uses INSERT ... ON CONFLICT to avoid duplicates.
+async fn upsert_c2s_lead(
+    db: &PgPool,
+    event: &WebhookEvent,
+) -> Result<(), AppError> {
+    let customer = event.attributes.customer.as_ref();
+    let name = customer.and_then(|c| c.name.as_deref());
+    let email = customer.and_then(|c| c.email.as_deref());
+    let phone = customer.and_then(|c| c.phone.as_deref());
+
+    // Normalize phone: strip non-digits
+    let phone_normalized = phone.map(|p| {
+        p.chars().filter(|c| c.is_ascii_digit()).collect::<String>()
+    });
+
+    let hook_action = event.hook_action.as_deref();
+    let product_desc = event.attributes.product.as_ref()
+        .and_then(|p| p.description.as_deref());
+    let lead_status = event.attributes.lead_status.as_ref()
+        .and_then(|s| serde_json::to_value(s).ok())
+        .and_then(|v| v.get("name").and_then(|n| n.as_str()).map(String::from));
+
+    let raw_payload = serde_json::to_value(event)
+        .unwrap_or(serde_json::json!({}));
+
+    sqlx::query(
+        r#"
+        INSERT INTO analytics.c2s_leads (
+            lead_id, customer_name, customer_email, customer_phone,
+            customer_phone_normalized, hook_action, product_description,
+            lead_status, raw_payload, enrichment_status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
+        ON CONFLICT (lead_id) DO UPDATE SET
+            customer_name = COALESCE(EXCLUDED.customer_name, analytics.c2s_leads.customer_name),
+            customer_email = COALESCE(EXCLUDED.customer_email, analytics.c2s_leads.customer_email),
+            customer_phone = COALESCE(EXCLUDED.customer_phone, analytics.c2s_leads.customer_phone),
+            customer_phone_normalized = COALESCE(EXCLUDED.customer_phone_normalized, analytics.c2s_leads.customer_phone_normalized),
+            hook_action = EXCLUDED.hook_action,
+            raw_payload = EXCLUDED.raw_payload,
+            updated_at = NOW()
+        "#,
+    )
+    .bind(&event.id)
+    .bind(name)
+    .bind(email)
+    .bind(phone)
+    .bind(phone_normalized.as_deref())
+    .bind(hook_action)
+    .bind(product_desc)
+    .bind(lead_status.as_deref())
+    .bind(&raw_payload)
+    .execute(db)
+    .await
+    .map_err(|e| AppError::InternalError(format!("c2s_leads upsert failed: {}", e)))?;
+
+    tracing::debug!("Auto-saved lead {} to c2s_leads", event.id);
+    Ok(())
 }
 
 /// Atomic webhook claim: INSERT ... ON CONFLICT DO NOTHING
