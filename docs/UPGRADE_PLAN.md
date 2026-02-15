@@ -114,13 +114,13 @@
 
 **Priority:** URGENT — Key differentiator for lead qualification
 
-- [ ] Meilisearch company service (65M CNPJs, `filter: socios_cpfs = {cpf}`)
-- [ ] CompanySummary model (cargo, totalSocios, participacaoEstimada, qualificacao labels)
-- [ ] CNPJ lookup by CPF endpoint
-- [ ] Company data persistence (`parties.company_data` JSONB column)
-- [ ] C2S message formatting with company data (2-line format, up to 5 companies)
-- [ ] Auto-scaling for Meilisearch machine (shared-1x/2GB to shared-8x/16GB, 10min idle)
-- [ ] CNPJa/Econodata fallback (web lookup when Meilisearch misses, rate-limited)
+- [x] Meilisearch company service (65M CNPJs, `filter: socios_cpfs = {cpf}`)
+- [x] CompanySummary model (cargo, totalSocios, participacaoEstimada, qualificacao labels)
+- [x] CNPJ lookup by CPF endpoint
+- [x] Company data persistence (`parties.company_data` JSONB column)
+- [x] C2S message formatting with company data (2-line format, up to 5 companies)
+- [x] Auto-scaling for Meilisearch machine (shared-1x/2GB to shared-8x/16GB, 10min idle)
+- [x] CNPJa/Econodata fallback (web lookup when Meilisearch misses, rate-limited)
 
 **Acceptance criteria:**
 - Given a CPF with known companies, company endpoint returns CompanySummary
