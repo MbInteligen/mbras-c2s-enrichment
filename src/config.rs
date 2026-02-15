@@ -13,13 +13,29 @@ pub struct Config {
     pub diretrix_user: String,
     pub diretrix_pass: String,
 
-    // DBase API integration (fallback for Diretrix)
+    // DBase API integration (primary phone lookup)
     pub dbase_key: String,
+
+    // Mimir API integration (Azure IBVI - fallback for DBase)
+    pub mimir_token: Option<String>, // DEPRECATED: Mimir being replaced by Work API discovery
 
     // Google Ads integration (optional - only required if using Google Ads webhooks)
     pub google_ads_webhook_key: Option<String>, // Webhook verification key
     pub c2s_default_seller_id: Option<String>,  // Default seller for new leads
     pub c2s_description_max_length: usize,      // Max description length
+
+    // CPF Lookup API (DuckDB 223M records - Tier 3 fallback)
+    pub cpf_lookup_api_url: String,
+    pub cpf_lookup_timeout_ms: u64,
+
+    // Income display multiplier (raw income * multiplier)
+    pub income_multiplier: f64,
+
+    // Enrichment cron intervals (seconds)
+    pub cron_interval_business_secs: u64,   // Business hours (9-18)
+    pub cron_interval_evening_secs: u64,    // Evening (18-23)
+    pub cron_interval_night_secs: u64,      // Night (23-9)
+    pub cron_enabled: bool,
 }
 
 impl Config {
@@ -121,6 +137,35 @@ impl Config {
                     }
                     Ok(key)
                 })?,
+            mimir_token: std::env::var("MIMIR_TOKEN")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
+            cpf_lookup_api_url: std::env::var("CPF_LOOKUP_API_URL")
+                .unwrap_or_else(|_| "https://cpf-lookup-api.fly.dev".to_string()),
+            cpf_lookup_timeout_ms: std::env::var("CPF_LOOKUP_TIMEOUT_MS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(120_000), // 2 minutes default
+            income_multiplier: std::env::var("INCOME_MULTIPLIER")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1.9),
+            cron_interval_business_secs: std::env::var("CRON_INTERVAL_BUSINESS_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(300), // 5 minutes
+            cron_interval_evening_secs: std::env::var("CRON_INTERVAL_EVENING_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1200), // 20 minutes
+            cron_interval_night_secs: std::env::var("CRON_INTERVAL_NIGHT_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(3600), // 60 minutes
+            cron_enabled: std::env::var("ENABLE_CRON")
+                .ok()
+                .map(|s| s == "true" || s == "1")
+                .unwrap_or(false),
             google_ads_webhook_key: std::env::var("GOOGLE_ADS_WEBHOOK_KEY")
                 .ok()
                 .filter(|s| !s.trim().is_empty()),

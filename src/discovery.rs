@@ -77,6 +77,20 @@ struct NameResponse {
     data: Option<Vec<NameResult>>,
 }
 
+/// CPF Lookup API (DuckDB) response item.
+#[derive(Debug, Deserialize)]
+struct DuckDbResult {
+    cpf: Option<String>,
+    nome_completo: Option<String>,
+}
+
+/// CPF Lookup API (DuckDB) response wrapper.
+#[derive(Debug, Deserialize)]
+struct DuckDbResponse {
+    count: Option<usize>,
+    results: Option<Vec<DuckDbResult>>,
+}
+
 /// Work API mail module response item (same structure as phone).
 #[derive(Debug, Deserialize)]
 struct MailResult {
@@ -94,6 +108,8 @@ pub struct CpfDiscoveryService {
     client: reqwest::Client,
     base_url: String,
     api_token: String,
+    duckdb_url: String,
+    duckdb_timeout_ms: u64,
 }
 
 impl CpfDiscoveryService {
@@ -108,6 +124,8 @@ impl CpfDiscoveryService {
             client,
             base_url: "https://completa.workbuscas.com".to_string(),
             api_token: config.worker_api_key.clone(),
+            duckdb_url: config.cpf_lookup_api_url.clone(),
+            duckdb_timeout_ms: config.cpf_lookup_timeout_ms,
         }
     }
 
@@ -407,6 +425,98 @@ impl CpfDiscoveryService {
         }))
     }
 
+    /// Tier 3: Search CPF by name via DuckDB API (223M records).
+    ///
+    /// Slow (~2 minutes) but has excellent coverage for rare names.
+    /// Only called if Tiers 1-2 (Work API) fail.
+    pub async fn find_cpf_by_name_duckdb(
+        &self,
+        lead_name: &str,
+    ) -> Result<Option<CpfDiscoveryResult>, AppError> {
+        if lead_name.len() < NAME_MIN_LENGTH {
+            return Ok(None);
+        }
+
+        let url = format!(
+            "{}/search/{}",
+            self.duckdb_url,
+            urlencoding::encode(&lead_name.trim().to_uppercase())
+        );
+
+        tracing::info!("Tier 3 (DuckDB): Searching CPF by name: {}", lead_name);
+
+        let resp = self
+            .client
+            .get(&url)
+            .timeout(std::time::Duration::from_millis(self.duckdb_timeout_ms))
+            .send()
+            .await
+            .map_err(|e| AppError::ExternalApiError(format!("DuckDB API error: {}", e)))?;
+
+        if !resp.status().is_success() {
+            tracing::warn!("DuckDB API returned status {}", resp.status());
+            return Ok(None);
+        }
+
+        let data: DuckDbResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::ExternalApiError(format!("DuckDB parse error: {}", e)))?;
+
+        let results = data.results.unwrap_or_default();
+        if results.is_empty() {
+            tracing::info!("DuckDB: No results for '{}'", lead_name);
+            return Ok(None);
+        }
+
+        // Filter valid CPFs and build candidates
+        let candidates: Vec<(String, String)> = results
+            .into_iter()
+            .filter_map(|r| {
+                let cpf = normalize_cpf(r.cpf.as_deref().unwrap_or(""));
+                let name = r.nome_completo.unwrap_or_default();
+                if cpf.len() == 11 && is_valid_cpf(&cpf) {
+                    Some((name, cpf))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if candidates.is_empty() {
+            return Ok(None);
+        }
+
+        // Find best match by name
+        if let Some((name, cpf, score, method)) =
+            find_best_match(lead_name, &candidates, NAME_MATCH_THRESHOLD)
+        {
+            return Ok(Some(CpfDiscoveryResult {
+                cpf,
+                found_name: name,
+                name_matches: true,
+                match_score: score,
+                match_method: method,
+                source: "duckdb".to_string(),
+            }));
+        }
+
+        // If only one result, return it even without name match
+        if candidates.len() == 1 {
+            let (name, cpf) = candidates.into_iter().next().unwrap();
+            return Ok(Some(CpfDiscoveryResult {
+                cpf,
+                found_name: name,
+                name_matches: false,
+                match_score: 0.0,
+                match_method: "single-result".to_string(),
+                source: "duckdb".to_string(),
+            }));
+        }
+
+        Ok(None)
+    }
+
     /// Full 5-tier phone discovery: Work phone → Work name → DuckDB → Diretrix → DBase.
     ///
     /// Currently implements Tiers 1-2 (Work API). Tiers 3-5 delegate to the
@@ -438,9 +548,14 @@ impl CpfDiscoveryService {
             }
         }
 
-        // Tiers 3-5: Handled by enrichment.rs find_cpf_via_diretrix()
-        // (DuckDB → Diretrix → DBase)
-        // Those tiers don't need Work API rate limiting and use their own clients.
+        // Tier 3: DuckDB CPF Lookup (223M records, slow ~2min)
+        if let Some(ln) = lead_name {
+            if let Ok(Some(result)) = self.find_cpf_by_name_duckdb(ln).await {
+                return Ok(Some(result));
+            }
+        }
+
+        // Tiers 4-5: Handled by enrichment.rs (DBase → Mimir)
         Ok(None)
     }
 

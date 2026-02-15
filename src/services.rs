@@ -1370,7 +1370,7 @@ impl MimirService {
         Self {
             client,
             base_url: "https://ibvi-mimir.ashygrass-6acf749b.brazilsouth.azurecontainerapps.io/api/v1/search/telefone-simplified".to_string(),
-            api_token: config.mimir_token.clone(),
+            api_token: config.mimir_token.clone().unwrap_or_default(),
         }
     }
 
