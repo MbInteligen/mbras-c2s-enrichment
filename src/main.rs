@@ -29,6 +29,7 @@ mod enrichment_monitor;
 mod dashboard;
 mod api_auth;
 mod lead_analysis;
+mod ibvi_property;
 mod domain_analyzer;
 mod risk_detector;
 mod web_search;
@@ -261,6 +262,8 @@ async fn main() -> anyhow::Result<()> {
         // Stats routes
         .route("/stats/enrichment", get(enrichment_stats_handler))
         .route("/stats/health", get(service_health_handler))
+        // Property Intelligence endpoint
+        .route("/api/v1/property/cpf/:cpf", get(property_by_cpf_handler))
         // Lead analysis endpoint
         .route("/api/v1/analyze/:lead_id", post(analyze_lead_handler))
         .route("/api/v1/analysis/:lead_id", get(get_analysis_handler))
@@ -378,5 +381,27 @@ async fn get_analysis_handler(
             StatusCode::NOT_FOUND,
             axum::Json(serde_json::json!({"error": "No analysis found for this lead"})),
         ).into_response(),
+    }
+}
+
+/// GET /api/v1/property/cpf/:cpf — property portfolio by CPF
+async fn property_by_cpf_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(cpf): Path<String>,
+) -> impl IntoResponse {
+    let svc = ibvi_property::IbviPropertyService::new(state.db.clone());
+    match svc.find_properties_by_cpf(&cpf).await {
+        Some(summary) => (StatusCode::OK, axum::Json(serde_json::json!({
+            "success": true,
+            "cpf": cpf,
+            "summary": summary,
+            "message": ibvi_property::IbviPropertyService::format_for_message(&summary),
+        }))).into_response(),
+        None => (StatusCode::OK, axum::Json(serde_json::json!({
+            "success": true,
+            "cpf": cpf,
+            "summary": null,
+            "message": "No properties found",
+        }))).into_response(),
     }
 }
