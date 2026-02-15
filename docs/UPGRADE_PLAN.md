@@ -218,13 +218,13 @@
 
 **Priority:** MEDIUM — Operational completeness
 
-- [ ] C2S seller management (list, create, update sellers)
-- [ ] C2S tag management (list, create, add tag to lead)
-- [ ] C2S lead activities (register calls, meetings, emails, tasks)
-- [ ] C2S lead forwarding
-- [ ] Queue distribution service (auto-assign, distribute, rebalance leads across sellers)
-- [ ] Enrichment status tracking with retry count
-- [ ] C2S lead search by phone/email
+- [x] C2S seller management (list, create, update sellers)
+- [x] C2S tag management (list, create, add tag to lead)
+- [x] C2S lead activities (register calls, meetings, emails, tasks)
+- [x] C2S lead forwarding
+- [x] Queue distribution service (auto-assign, distribute, rebalance leads across sellers)
+- [x] Enrichment status tracking with retry count
+- [x] C2S lead search by phone/email
 
 **Acceptance criteria:**
 - All C2S CRUD endpoints functional
@@ -237,14 +237,14 @@
 
 **Priority:** MEDIUM — Multi-workspace lead routing
 
-- [ ] Twenty service (GraphQL client via reqwest)
-- [ ] Lead CRUD (create, update, get)
-- [ ] Workspace routing (S/A to WS-SENIOR, B/C/Risk to WS-GENERAL)
-- [ ] SLA tracking (S=2h, A=24h, B=48h, C=72h)
-- [ ] Lead delegation with expiry (S/A: 7d, others: 14d)
-- [ ] Intent signal calculation (high/medium/low from activity patterns)
-- [ ] Pipeline stats, broker stats, adoption metrics
-- [ ] SLA violation detection + bulk import with deduplication
+- [x] Twenty service (GraphQL client via reqwest)
+- [x] Lead CRUD (create, update, get)
+- [x] Workspace routing (S/A to WS-SENIOR, B/C/Risk to WS-GENERAL)
+- [x] SLA tracking (S=2h, A=24h, B=48h, C=72h)
+- [x] Lead delegation with expiry (S/A: 7d, others: 14d)
+- [x] Intent signal calculation (high/medium/low from activity patterns)
+- [x] Pipeline stats, broker stats, adoption metrics
+- [x] SLA violation detection + bulk import with deduplication
 
 **Acceptance criteria:**
 - Lead creation auto-routes to correct workspace by tier
