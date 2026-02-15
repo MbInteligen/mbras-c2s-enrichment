@@ -2,12 +2,33 @@
 
 **Goal:** Bring rust-c2s-api to feature parity with ts-c2s-api
 **Reference:** `ts-c2s-api/docs/RUST_VS_TS_COMPARISON.md`
-**Canonical scope:** 90 features across 14 phases (Phase 0-13)
-**MCP Server:** 66 tools (Phase 13, counted separately — depends on SDK maturity)
+**Canonical scope:** 106 checkboxes across 13 phases (Phase 0-12)
+**MCP Server:** 66 tools (Phase 12, counted as 16 checklist rows)
 
-> **Scope accounting:** 90 checkboxes in phases 0-12 + 66 MCP tools in Phase 13 = 156 total deliverables.
+> **Scope accounting:** Phases 0-11 = 90 feature checkboxes. Phase 12 = 16 MCP rows (66 tools). Grand total = 106 checkboxes.
 > The comparison doc lists 68 "Rust missing" categories; this plan expands those into concrete implementation tasks.
 > Phase 0 adds 8 new items not in the original comparison (parity contract, metrics, migration, scheduler).
+
+## Scope Accounting
+
+| Phases | Checkboxes | Notes |
+|--------|-----------|-------|
+| Phase 0 | 8 | Foundation (1 done: rate limiter) |
+| Phase 1 | 13 | CPF Discovery |
+| Phase 2 | 7 | Company Intelligence |
+| Phase 3 | 7 | Lead Scoring |
+| Phase 4 | 12 | Alerting \& Monitoring |
+| Phase 5 | 9 | Web Intelligence |
+| Phase 6 | 4 | Property Intelligence |
+| Phase 7 | 7 | CRM Extended |
+| Phase 8 | 8 | Twenty CRM |
+| Phase 9 | 5 | Reporting |
+| Phase 10 | 5 | Photo \& Media |
+| Phase 11 | 5 | Infrastructure |
+| **Phases 0-11 subtotal** | **90** | |
+| Phase 12 | 16 | MCP Server (16 rows → 66 tools) |
+| **Grand total** | **106** | 90 features + 66 MCP tools |
+
 
 ---
 
@@ -42,7 +63,7 @@
 **Rationale:** Establishes measurable baselines, migration safety, and distributed coordination so Phase 1-3 KPIs are measurable from day one.
 
 - [ ] **Parity contract document** — One-to-one mapping from comparison doc "Rust missing" rows to phase/checkbox. Published as `docs/PARITY_CONTRACT.md`. Any new feature must trace back to a comparison-doc row or an explicit "new" marker.
-- [ ] **Minimal observability (Prometheus)** — `GET /metrics` endpoint with 4 counters: `enrichment_total`, `enrichment_success`, `enrichment_error`, `enrichment_duration_seconds`. Uses `prometheus` + `axum-prometheus` crates. Required to measure the 70% to 92% enrichment rate claim.
+- [ ] **Minimal observability (Prometheus)** — `GET /metrics` endpoint with Histogram `enrichment_duration_seconds` (by tier) + labeled counters: `enrichment_requests_total` (status), `cpf_discovery_total` (tier, result), `http_requests_total` (method, route_template, status). Uses `prometheus` + `axum-prometheus` crates. Required to measure the 70% to 92% enrichment rate claim.
 - [ ] **Enrichment rate baseline** — Record current enrichment success rate from production logs. Store as `docs/BASELINE_METRICS.md` with date, sample size, and rate. All future phase KPIs reference this.
 - [ ] **Migration baseline & rollback playbook** — Audit all 18 existing migrations. Verify `_sqlx_migrations` table is consistent. Document rollback procedure for every future migration. Create `migrations/README.md`.
 - [ ] **Distributed scheduler lock** — Replace local `tokio::spawn` in webhook_handler.rs with advisory lock (`pg_try_advisory_lock`) or atomic claim (`UPDATE ... WHERE claimed_at IS NULL`). Prevents duplicate processing if Fly.io runs >1 instance.
