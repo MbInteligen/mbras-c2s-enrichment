@@ -20,3 +20,4 @@ pub mod models;
 pub mod services;
 pub mod webhook_handler;
 pub mod webhook_models;
+pub mod scoring;
