@@ -90,16 +90,16 @@
 - [x] Work API `name` module (Tier 2 — search CPF by name, max 20 results, score >= 0.7)
 - [x] Work API `mail` module (Email Tier 1 — search CPF by email)
 - [x] CPF mod-11 validation (static `is_valid_cpf()`, reject invalid CPFs from ALL modules)
-- [ ] CPF Lookup DuckDB client (Tier 3 — HTTP call to cpf-lookup-api for 223M fallback)
+- [x] CPF Lookup DuckDB client (Tier 3 — HTTP call to cpf-lookup-api for 223M fallback)
 - [x] Reorder discovery tiers: Work phone(1) then Work name(2) then DuckDB(3) then Diretrix(4) then DBase(5)
 - [x] Email discovery 2 tiers: Work mail(1) then Diretrix(2)
-- [ ] Deprecate MimirService from discovery flow (keep code, remove from `find_cpf_via_diretrix`)
-- [ ] Income multiplier (x1.9 for display, configurable via env `INCOME_MULTIPLIER`)
+- [x] Deprecate MimirService from discovery flow (keep code, remove from `find_cpf_via_diretrix`)
+- [x] Income multiplier (x1.9 for display, configurable via env `INCOME_MULTIPLIER`)
 - [x] Batch enrichment endpoint (`POST /batch/enrich-direct` with 4-tier CPF discovery)
 - [x] Enrichment retry service (retry failed/partial leads with exponential backoff)
-- [ ] Enrichment cron (background loop: business hours 5min, evening 20min, night 60min)
+- [x] Enrichment cron (background loop: business hours 5min, evening 20min, night 60min)
 - [x] Enrichment status lifecycle (`pending` then `processing` then `completed/partial/failed/basic`)
-- [ ] `c2s_leads` table — auto-save webhook leads to PostgreSQL before enrichment
+- [x] `c2s_leads` table — auto-save webhook leads to PostgreSQL before enrichment
 
 **Acceptance criteria:**
 - Enrichment rate >= 85% (measured via `/metrics` counter)

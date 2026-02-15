@@ -28,6 +28,10 @@
 - [Webhook + Redis Plan](architecture/PLAN_WEBHOOK_REDIS.md) - Direct C2S webhooks with Redis
 - [On Close Lead Plan](architecture/PLAN_ON_CLOSE_LEAD.md) - Lead closure handling
 
+**[Cross-Language Parity](parity/)**
+- [Cross-Language Parity Protocol](parity/CROSS_LANGUAGE_PARITY_PROTOCOL.md) - Rust <-> TS parity workflow and gates
+- [Linear Parity Issue Template](parity/LINEAR_PARITY_ISSUE_TEMPLATE.md) - Reusable issue body with DoD checklist
+
 ---
 
 ### 🗄️ Database
