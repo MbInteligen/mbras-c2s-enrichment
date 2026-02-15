@@ -180,15 +180,15 @@
 
 **Priority:** MEDIUM — Deeper lead qualification
 
-- [ ] Google Custom Search service (via `GOOGLE_API_KEY` + `GOOGLE_CSE_ID`)
-- [ ] Person search (LinkedIn, business profiles)
-- [ ] News search (negative news flagging)
-- [ ] Email domain analyzer (company identification, trust score)
-- [ ] Risk detector service (criminal, investigation, financial, legal categories)
-- [ ] Known risk database (hardcoded flagged individuals, e.g. CPI das Bets)
-- [ ] Web insight generator + surname analyzer
-- [ ] Name matcher (Levenshtein distance via `strsim` crate)
-- [ ] Lead analysis caching (`lead_analyses` table, avoid re-analyzing same lead)
+- [x] Google Custom Search service (via `GOOGLE_API_KEY` + `GOOGLE_CSE_ID`)
+- [x] Person search (LinkedIn, business profiles)
+- [x] News search (negative news flagging)
+- [x] Email domain analyzer (company identification, trust score)
+- [x] Risk detector service (criminal, investigation, financial, legal categories)
+- [x] Known risk database (hardcoded flagged individuals, e.g. CPI das Bets)
+- [x] Web insight generator + surname analyzer
+- [x] Name matcher (Levenshtein distance via `strsim` crate)
+- [x] Lead analysis caching (`lead_analyses` table, avoid re-analyzing same lead)
 
 **Acceptance criteria:**
 - `analyze_lead(id)` returns tier, discovered info (company/role/LinkedIn), recommendation
