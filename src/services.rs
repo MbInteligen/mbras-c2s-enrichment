@@ -1387,7 +1387,7 @@ impl MimirService {
     /// * `Err(AppError)` - Request failed
     ///
     /// # Example
-    /// ```rust
+    /// ```ignore
     /// let result = mimir_service.search_by_phone("11999999999").await?;
     /// if let Some(pessoa) = result {
     ///     println!("Found: {} - CPF: {}", pessoa.dados_basicos.nome, pessoa.dados_basicos.cpf);

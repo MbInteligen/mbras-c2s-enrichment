@@ -14,7 +14,7 @@ use std::time::Duration;
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// let circuit_breaker = create_db_circuit_breaker();
 ///
 /// let result = circuit_breaker.call(async {

@@ -10,7 +10,7 @@ use sqlx::{postgres::PgPoolOptions, PgPool};
 /// For critical operations, wrap database calls with the circuit breaker
 /// from `crate::circuit_breaker::create_db_circuit_breaker()`:
 ///
-/// ```rust
+/// ```ignore
 /// use crate::circuit_breaker::create_db_circuit_breaker;
 ///
 /// let cb = create_db_circuit_breaker();

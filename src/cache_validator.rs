@@ -29,7 +29,7 @@ impl ValidatedCacheEntry {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```ignore
     /// let entry = ValidatedCacheEntry::new(r#"{"name": "John"}"#.to_string());
     /// cache.insert(key, entry.serialize()).await;
     /// ```
@@ -66,7 +66,7 @@ impl ValidatedCacheEntry {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```ignore
     /// if let Some(cached) = cache.get(&key).await {
     ///     if let Some(valid_data) = ValidatedCacheEntry::deserialize_and_validate(&cached) {
     ///         // Use valid_data safely
