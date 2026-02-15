@@ -36,28 +36,28 @@
 
 **Project:** Rust C2S API — Feature Parity Upgrade
 **Project ID:** `f43df1ed-be9c-4214-b68a-78fef78a9577`
-**Team:** RML
+**Team:** IBVI
 
 | Issue | Phase | Priority | Features |
 |-------|-------|----------|----------|
-| **RML-1105** | Phase 0: Parity Contract & Foundation | Urgent | 8 |
-| **RML-1092** | Phase 1: CPF Discovery & Core Enrichment | Urgent | 13 |
-| **RML-1093** | Phase 2: Company Intelligence - Meilisearch 65M | Urgent | 7 |
-| **RML-1094** | Phase 3: Lead Scoring & Classification | Urgent | 7 |
-| **RML-1095** | Phase 4: Alerting & Monitoring | Medium | 12 |
-| **RML-1096** | Phase 5: Web Intelligence & Risk Detection | Medium | 9 |
-| **RML-1097** | Phase 6: Property Intelligence - IBVI | Medium | 4 |
-| **RML-1098** | Phase 7: CRM Extended - C2S | Medium | 7 |
-| **RML-1099** | Phase 8: Twenty CRM Integration | Medium | 8 |
-| **RML-1100** | Phase 9: Reporting MD/HTML/PDF | Medium | 5 |
-| **RML-1101** | Phase 10: Photo Storage - Cloudflare R2 | Low | 5 |
-| **RML-1102** | Phase 11: Infrastructure & Auto-Scaling | Low | 5 |
-| **RML-1103** | Phase 12: MCP Server - 66 AI Tools | Low | 66 tools |
-| **RML-1104** | Phase 12b: Database Schema Updates | High | -- (inline) |
+| **IBVI-352** | Phase 0: Parity Contract & Foundation | Urgent | 8 |
+| **IBVI-341** | Phase 1: CPF Discovery & Core Enrichment | Urgent | 13 |
+| **IBVI-342** | Phase 2: Company Intelligence - Meilisearch 65M | Urgent | 7 |
+| **IBVI-353** | Phase 3: Lead Scoring & Classification | Urgent | 7 |
+| **IBVI-343** | Phase 4: Alerting & Monitoring | Medium | 12 |
+| **IBVI-344** | Phase 5: Web Intelligence & Risk Detection | Medium | 9 |
+| **IBVI-345** | Phase 6: Property Intelligence - IBVI | Medium | 4 |
+| **IBVI-346** | Phase 7: CRM Extended - C2S | Medium | 7 |
+| **IBVI-347** | Phase 8: Twenty CRM Integration | Medium | 8 |
+| **IBVI-348** | Phase 9: Reporting MD/HTML/PDF | Medium | 5 |
+| **IBVI-349** | Phase 10: Photo Storage - Cloudflare R2 | Low | 5 |
+| **IBVI-350** | Phase 11: Infrastructure & Auto-Scaling | Low | 5 |
+| **IBVI-351** | Phase 12: MCP Server - 66 AI Tools | Low | 66 tools |
+| **IBVI-352** | Phase 12b: Database Schema Updates | High | -- (inline) |
 
 ---
 
-## Phase 0 — Parity Contract & Foundation (RML-1105)
+## Phase 0 — Parity Contract & Foundation (IBVI-352)
 
 **Priority:** URGENT — Must complete before any Phase 1+ work begins.
 **Rationale:** Establishes measurable baselines, migration safety, and distributed coordination so Phase 1-3 KPIs are measurable from day one.
@@ -82,7 +82,7 @@
 
 ---
 
-## Phase 1 — CPF Discovery & Core Enrichment (RML-1092)
+## Phase 1 — CPF Discovery & Core Enrichment (IBVI-341)
 
 **Priority:** URGENT — Directly impacts enrichment rate (baseline ~70%, target 92%)
 **Depends on:** Phase 0 (metrics must exist to measure improvement)
@@ -110,7 +110,7 @@
 
 ---
 
-## Phase 2 — Company Intelligence (RML-1093)
+## Phase 2 — Company Intelligence (IBVI-342)
 
 **Priority:** URGENT — Key differentiator for lead qualification
 
@@ -130,7 +130,7 @@
 
 ---
 
-## Phase 3 — Lead Scoring & Classification (RML-1094)
+## Phase 3 — Lead Scoring & Classification (IBVI-353)
 
 **Priority:** URGENT — Required for CRM routing and seller prioritization
 
@@ -150,7 +150,7 @@
 
 ---
 
-## Phase 4 — Alerting & Monitoring (RML-1095)
+## Phase 4 — Alerting & Monitoring (IBVI-343)
 
 **Priority:** MEDIUM — Operational visibility (Prometheus already in Phase 0)
 
@@ -176,7 +176,7 @@
 
 ---
 
-## Phase 5 — Web Intelligence & Risk (RML-1096)
+## Phase 5 — Web Intelligence & Risk (IBVI-344)
 
 **Priority:** MEDIUM — Deeper lead qualification
 
@@ -198,7 +198,7 @@
 
 ---
 
-## Phase 6 — Property Intelligence (RML-1097)
+## Phase 6 — Property Intelligence (IBVI-345)
 
 **Priority:** MEDIUM — Real estate-specific value
 
@@ -214,7 +214,7 @@
 
 ---
 
-## Phase 7 — CRM Extended (C2S) (RML-1098)
+## Phase 7 — CRM Extended (C2S) (IBVI-346)
 
 **Priority:** MEDIUM — Operational completeness
 
@@ -233,7 +233,7 @@
 
 ---
 
-## Phase 8 — Twenty CRM Integration (RML-1099)
+## Phase 8 — Twenty CRM Integration (IBVI-347)
 
 **Priority:** MEDIUM — Multi-workspace lead routing
 
@@ -253,7 +253,7 @@
 
 ---
 
-## Phase 9 — Reporting (RML-1100)
+## Phase 9 — Reporting (IBVI-348)
 
 **Priority:** MEDIUM — Output for stakeholders
 
@@ -270,7 +270,7 @@
 
 ---
 
-## Phase 10 — Photo & Media (RML-1101)
+## Phase 10 — Photo & Media (IBVI-349)
 
 **Priority:** LOW — Nice to have
 
@@ -287,7 +287,7 @@
 
 ---
 
-## Phase 11 — Infrastructure & Scaling (RML-1102)
+## Phase 11 — Infrastructure & Scaling (IBVI-350)
 
 **Priority:** LOW — Cost optimization
 
@@ -306,7 +306,7 @@
 
 ---
 
-## Phase 12 — MCP Server (RML-1103)
+## Phase 12 — MCP Server (IBVI-351)
 
 **Priority:** LOW — AI assistant integration (depends on Rust MCP SDK maturity)
 
@@ -334,7 +334,7 @@
 
 ---
 
-## Phase 12b — Database Schema Updates (RML-1104)
+## Phase 12b — Database Schema Updates (IBVI-352)
 
 **Priority:** Runs inline with each phase — NOT a standalone deliverable.
 
@@ -454,4 +454,4 @@ Email: Work API mail(1) -> Diretrix(2)
 
 **Created:** February 14, 2026
 **Updated:** February 15, 2026 (v2 — Phase 0 added, scope reconciled, acceptance criteria, tier strategy resolved)
-**Linear Issues:** RML-1092 to RML-1105
+**Linear Issues:** IBVI-341 to IBVI-352
