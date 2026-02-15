@@ -30,3 +30,7 @@ pub mod cron;
 pub mod meilisearch;
 pub mod fly_scale;
 pub mod cnpj_fallback;
+pub mod alert;
+pub mod enrichment_monitor;
+pub mod dashboard;
+pub mod api_auth;

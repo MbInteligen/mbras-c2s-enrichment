@@ -5,6 +5,9 @@ use crate::models::*;
 use crate::services::{EnrichmentService, WorkApiService};
 use crate::meilisearch::MeilisearchCompanyService;
 use crate::fly_scale::FlyScaleService;
+use crate::alert::AlertService;
+use crate::enrichment_monitor::EnrichmentMonitor;
+use crate::dashboard::SessionStore;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -34,6 +37,9 @@ pub struct AppState {
     pub work_api_cache: Cache<String, String>,
     pub meilisearch: Arc<MeilisearchCompanyService>,
     pub fly_scale: Arc<FlyScaleService>,
+    pub alert_service: Arc<AlertService>,
+    pub enrichment_monitor: Arc<EnrichmentMonitor>,
+    pub sessions: Arc<SessionStore>,
 }
 
 /// Health check endpoint

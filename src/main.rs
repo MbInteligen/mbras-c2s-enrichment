@@ -24,8 +24,14 @@ mod cron;
 mod meilisearch;
 mod fly_scale;
 mod cnpj_fallback;
+mod alert;
+mod enrichment_monitor;
+mod dashboard;
+mod api_auth;
 
 use axum::{
+    extract::State,
+    middleware as axum_middleware,
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -169,6 +175,12 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Initialize alert service
+    let alert_service = std::sync::Arc::new(crate::alert::AlertService::new());
+
+    // Initialize session store for dashboard
+    let sessions = std::sync::Arc::new(crate::dashboard::SessionStore::new());
+
     // Build application state
     let app_state = std::sync::Arc::new(crate::handlers::AppState {
         db: db.pool.clone(),
@@ -183,6 +195,12 @@ async fn main() -> anyhow::Result<()> {
             &config.meilisearch_key,
         )),
         fly_scale: std::sync::Arc::new(crate::fly_scale::FlyScaleService::new(&config)),
+        alert_service: alert_service.clone(),
+        enrichment_monitor: std::sync::Arc::new(crate::enrichment_monitor::EnrichmentMonitor::new(
+            db.pool.clone(),
+            alert_service.clone(),
+        )),
+        sessions,
     });
 
     // Configure rate limiter: 10 requests/second per IP, burst of 20
@@ -231,6 +249,15 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/company/search", get(handlers::search_companies))
         .route("/batch/enrich-direct", post(batch::enrich_direct))
         .route("/batch/retry-failed", post(batch::retry_failed))
+        // Dashboard routes
+        .route("/dashboard", get(dashboard::dashboard_page))
+        .route("/dashboard/login", get(dashboard::login_page))
+        .route("/dashboard/login", post(dashboard::login_submit))
+        .route("/dashboard/logout", get(dashboard::logout))
+        // Stats routes
+        .route("/stats/enrichment", get(enrichment_stats_handler))
+        .route("/stats/health", get(service_health_handler))
+        .layer(axum_middleware::from_fn(api_auth::api_key_auth))
         .layer(
             ServiceBuilder::new()
                 // Request size limit: 5MB max payload (prevents memory exhaustion)
@@ -241,9 +268,10 @@ async fn main() -> anyhow::Result<()> {
                 }),
         );
 
-    // Clone app_state for cron before router consumes it
+    // Clone app_state for cron and monitor before router consumes it
     let cron_state = app_state.clone();
     let cron_enabled = config.cron_enabled;
+    let monitor_ref = app_state.enrichment_monitor.clone();
 
     // Build final app with health check (bypasses rate limiting for Fly.io)
     let app = Router::new()
@@ -268,6 +296,10 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Enrichment cron disabled (set ENABLE_CRON=true to enable)");
     }
 
+    // Start enrichment rate monitor (periodic check every 6 hours)
+    tokio::spawn(async move { monitor_ref.start_monitoring().await });
+    tracing::info!("Enrichment rate monitor started (threshold: 80%, interval: 6h)");
+
     // Start server
     let addr = format!("0.0.0.0:{}", config.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
@@ -286,4 +318,25 @@ async fn serve_metrics() -> impl IntoResponse {
         [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
         body,
     )
+}
+
+/// GET /stats/enrichment — enrichment rate stats
+async fn enrichment_stats_handler(
+    State(state): State<Arc<handlers::AppState>>,
+) -> impl IntoResponse {
+    let stats = state.enrichment_monitor.get_stats().await;
+    (StatusCode::OK, axum::Json(serde_json::json!(stats)))
+}
+
+/// GET /stats/health — service health report
+async fn service_health_handler(
+    State(state): State<Arc<handlers::AppState>>,
+) -> impl IntoResponse {
+    let health = state.alert_service.get_service_health().await;
+    let status = if health.all_healthy {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status, axum::Json(serde_json::json!(health)))
 }
