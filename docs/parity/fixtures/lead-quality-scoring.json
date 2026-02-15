@@ -1,0 +1,149 @@
+{
+  "feature": "lead-quality-scoring",
+  "version": 1,
+  "cases": [
+    {
+      "id": "ronald-like",
+      "description": "Inferred income via company capital + admin + real estate sector",
+      "input": {
+        "name": "Ronald Leite Soares",
+        "phone": "11987654321",
+        "email": "ronald@incorp.com.br",
+        "cpf": "12345678909",
+        "enrichedName": "Ronald Leite Soares",
+        "income": { "state": "missing" },
+        "addresses": [{ "neighborhood": "Jardim Europa", "city": "São Paulo", "state": "SP" }],
+        "companyCount": 4,
+        "totalCompanyCapital": 175000,
+        "isCompanyAdministrator": true,
+        "hasRealEstateSector": true
+      },
+      "expected": {
+        "score": 88,
+        "score_tolerance": 0,
+        "grade": "B",
+        "category": "high",
+        "scoreMethod": "inferred",
+        "breakdown": {
+          "dataCompleteness": 30,
+          "incomeScore": 15,
+          "locationScore": 15,
+          "contactValidity": 18,
+          "enrichmentBonus": 10
+        },
+        "flags_include": ["inferred_income", "noble_neighborhood", "multiple_companies"]
+      }
+    },
+    {
+      "id": "phone-only",
+      "description": "Minimal lead with just name + phone",
+      "input": {
+        "name": "Joao",
+        "phone": "11987654321",
+        "income": { "state": "missing" }
+      },
+      "expected": {
+        "score": 28,
+        "score_tolerance": 0,
+        "grade": "F",
+        "category": "poor",
+        "scoreMethod": "none",
+        "breakdown": {
+          "dataCompleteness": 13,
+          "incomeScore": 0,
+          "locationScore": 0,
+          "contactValidity": 15,
+          "enrichmentBonus": 0
+        },
+        "flags_include": []
+      }
+    },
+    {
+      "id": "full-income-80k",
+      "description": "Full data with direct income R$80k — proxy signals ignored",
+      "input": {
+        "name": "Ana Maria Silva",
+        "phone": "11992345678",
+        "email": "ana@gmail.com",
+        "cpf": "11122233344",
+        "enrichedName": "Ana Maria Silva",
+        "income": { "state": "value", "value": 80000 },
+        "addresses": [{ "neighborhood": "Pinheiros", "city": "São Paulo", "state": "SP" }],
+        "companyCount": 2,
+        "totalCompanyCapital": 8000000,
+        "isCompanyAdministrator": true,
+        "hasRealEstateSector": true
+      },
+      "expected": {
+        "score": 98,
+        "score_tolerance": 0,
+        "grade": "A",
+        "category": "premium",
+        "scoreMethod": "direct",
+        "breakdown": {
+          "dataCompleteness": 30,
+          "incomeScore": 25,
+          "locationScore": 15,
+          "contactValidity": 20,
+          "enrichmentBonus": 8
+        },
+        "flags_include": [],
+        "flags_exclude": ["inferred_income"]
+      }
+    },
+    {
+      "id": "basic-gmail",
+      "description": "Basic lead with gmail — no proxy signals, no inflation",
+      "input": {
+        "name": "Ana Silva",
+        "phone": "11988887777",
+        "email": "ana@gmail.com",
+        "income": { "state": "missing" }
+      },
+      "expected": {
+        "score": 42,
+        "score_tolerance": 0,
+        "grade": "D",
+        "category": "low",
+        "scoreMethod": "none",
+        "breakdown": {
+          "dataCompleteness": 22,
+          "incomeScore": 0,
+          "locationScore": 0,
+          "contactValidity": 20,
+          "enrichmentBonus": 0
+        },
+        "flags_include": [],
+        "flags_exclude": ["inferred_income"]
+      }
+    },
+    {
+      "id": "explicit-zero",
+      "description": "income=0 is explicit data — direct scoring, proxy disabled",
+      "input": {
+        "name": "Carlos Silva",
+        "phone": "11999990000",
+        "income": { "state": "value", "value": 0 },
+        "totalCompanyCapital": 200000,
+        "isCompanyAdministrator": true,
+        "hasRealEstateSector": true
+      },
+      "expected": {
+        "score": 32,
+        "score_tolerance": 0,
+        "grade": "D",
+        "category": "low",
+        "scoreMethod": "direct",
+        "breakdown": {
+          "dataCompleteness": 17,
+          "incomeScore": 0,
+          "locationScore": 0,
+          "contactValidity": 15,
+          "enrichmentBonus": 0
+        },
+        "flags_include": [],
+        "flags_exclude": ["inferred_income"]
+      }
+    }
+  ]
+}

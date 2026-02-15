@@ -1,0 +1,304 @@
+{
+  "metadata": {
+    "featureKey": "phase1-cpf-discovery-core-enrichment",
+    "issue": "RML-1092",
+    "version": "0.1.0",
+    "createdAt": "2026-02-15",
+    "notes": "Skeleton fixture set for Rust<->TS parity tests."
+  },
+  "valid": [
+    {
+      "id": "cpf_mod11_valid_plain",
+      "component": "cpf_mod11",
+      "input": { "cpf": "52998224725" },
+      "expected": { "valid": true, "normalizedCpf": "52998224725" }
+    },
+    {
+      "id": "cpf_mod11_valid_14char_normalized",
+      "component": "cpf_mod11",
+      "input": { "cpf": "00052998224725" },
+      "expected": { "valid": true, "normalizedCpf": "52998224725" }
+    },
+    {
+      "id": "phone_discovery_tier1_work_api_phone",
+      "component": "phone_discovery",
+      "input": { "phone": "11987654321", "leadName": "Joao Silva" },
+      "stubs": {
+        "workApiPhone": [
+          { "cpf_cnpj": "191", "nome": "Empresa X" },
+          { "cpf_cnpj": "00052998224725", "nome": "JOAO SILVA" }
+        ],
+        "workApiName": null,
+        "cpfLookup": null,
+        "diretrix": null,
+        "dbase": null
+      },
+      "expected": { "cpf": "52998224725", "source": "work-api", "tier": 1 }
+    },
+    {
+      "id": "phone_discovery_tier2_work_api_name",
+      "component": "phone_discovery",
+      "input": { "phone": "11911112222", "leadName": "Joao Pedro Silva" },
+      "stubs": {
+        "workApiPhone": [],
+        "workApiName": [
+          { "cpf": "39053344705", "nome": "JOAO PEDRO SILVA" }
+        ],
+        "cpfLookup": null,
+        "diretrix": null,
+        "dbase": null
+      },
+      "expected": { "cpf": "39053344705", "source": "work-api-name", "tier": 2 }
+    },
+    {
+      "id": "phone_discovery_tier3_duckdb_lookup",
+      "component": "phone_discovery",
+      "input": { "phone": "21911112222", "leadName": "Maria Souza" },
+      "stubs": {
+        "workApiPhone": [],
+        "workApiName": [],
+        "cpfLookup": { "cpf": "52998224725", "nome_completo": "MARIA SOUZA" },
+        "diretrix": null,
+        "dbase": null
+      },
+      "expected": {
+        "cpf": "52998224725",
+        "source": "cpf-lookup-223m-name",
+        "tier": 3
+      }
+    },
+    {
+      "id": "phone_discovery_tier4_diretrix",
+      "component": "phone_discovery",
+      "input": { "phone": "11900001111", "leadName": "Ana Lima" },
+      "stubs": {
+        "workApiPhone": [],
+        "workApiName": [],
+        "cpfLookup": null,
+        "diretrix": { "cpf": "39053344705", "name": "ANA LIMA" },
+        "dbase": null
+      },
+      "expected": { "cpf": "39053344705", "source": "diretrix", "tier": 4 }
+    },
+    {
+      "id": "phone_discovery_tier5_dbase",
+      "component": "phone_discovery",
+      "input": { "phone": "11900002222", "leadName": "Carlos Alves" },
+      "stubs": {
+        "workApiPhone": [],
+        "workApiName": [],
+        "cpfLookup": null,
+        "diretrix": null,
+        "dbase": { "cpf": "52998224725", "name": "CARLOS ALVES" }
+      },
+      "expected": { "cpf": "52998224725", "source": "dbase", "tier": 5 }
+    },
+    {
+      "id": "email_discovery_tier1_work_api_mail",
+      "component": "email_discovery",
+      "input": { "email": "joao@email.com", "leadName": "Joao Silva" },
+      "stubs": {
+        "workApiMail": [
+          { "cpf_cnpj": "00052998224725", "nome": "JOAO SILVA" }
+        ],
+        "diretrixEmail": null
+      },
+      "expected": { "cpf": "52998224725", "source": "work-api-mail", "tier": 1 }
+    },
+    {
+      "id": "email_discovery_tier2_diretrix",
+      "component": "email_discovery",
+      "input": { "email": "ana@email.com", "leadName": "Ana Lima" },
+      "stubs": {
+        "workApiMail": [],
+        "diretrixEmail": { "cpf": "39053344705", "name": "ANA LIMA" }
+      },
+      "expected": { "cpf": "39053344705", "source": "diretrix", "tier": 2 }
+    },
+    {
+      "id": "income_multiplier_default_1_9",
+      "component": "income_multiplier",
+      "input": { "rawIncome": 10000, "multiplier": 1.9 },
+      "expected": { "displayIncome": 19000 }
+    },
+    {
+      "id": "batch_enrich_direct_completed",
+      "component": "batch_enrich_direct",
+      "input": {
+        "body": { "phone": "11987654321", "name": "Joao Silva" }
+      },
+      "stubs": {
+        "cpfDiscovery": { "cpf": "52998224725", "source": "work-api" },
+        "workApiCpf": { "timedOut": false, "data": { "cpf": "52998224725" } }
+      },
+      "expected": { "status": "completed", "success": true }
+    },
+    {
+      "id": "retry_policy_eligible_first_attempt",
+      "component": "retry_policy",
+      "input": {
+        "status": "partial",
+        "retryCount": 0,
+        "lastRetryAt": null,
+        "maxRetries": 5
+      },
+      "expected": { "eligible": true, "delayMs": 3600000 }
+    },
+    {
+      "id": "cron_schedule_business_hours",
+      "component": "cron_schedule",
+      "input": { "timeZone": "America/Sao_Paulo", "localTime": "10:30" },
+      "expected": { "intervalMs": 300000, "period": "business" }
+    }
+  ],
+  "invalid": [
+    {
+      "id": "cpf_mod11_invalid_all_same_digits",
+      "component": "cpf_mod11",
+      "input": { "cpf": "00000000000" },
+      "expected": { "valid": false, "normalizedCpf": null }
+    },
+    {
+      "id": "cpf_mod11_invalid_check_digits",
+      "component": "cpf_mod11",
+      "input": { "cpf": "52998224724" },
+      "expected": { "valid": false, "normalizedCpf": null }
+    },
+    {
+      "id": "batch_enrich_direct_requires_phone_or_email",
+      "component": "batch_enrich_direct",
+      "input": { "body": { "name": "No Contact" } },
+      "expected": {
+        "success": false,
+        "errorLike": "Phone or email is required for direct enrichment"
+      }
+    },
+    {
+      "id": "retry_policy_not_eligible_failed_status",
+      "component": "retry_policy",
+      "input": {
+        "status": "failed",
+        "retryCount": 1,
+        "lastRetryAt": "2026-02-15T10:00:00Z",
+        "maxRetries": 5
+      },
+      "expected": { "eligible": false }
+    },
+    {
+      "id": "retry_policy_not_eligible_max_retries",
+      "component": "retry_policy",
+      "input": {
+        "status": "partial",
+        "retryCount": 5,
+        "lastRetryAt": "2026-02-15T10:00:00Z",
+        "maxRetries": 5
+      },
+      "expected": { "eligible": false }
+    }
+  ],
+  "edge": [
+    {
+      "id": "phone_discovery_skip_name_tier_when_name_short",
+      "component": "phone_discovery",
+      "input": { "phone": "11900003333", "leadName": "Ana" },
+      "stubs": {
+        "workApiPhone": [],
+        "workApiName": [{ "cpf": "39053344705", "nome": "ANA" }],
+        "cpfLookup": null,
+        "diretrix": { "cpf": "52998224725", "name": "ANA LIMA" },
+        "dbase": null
+      },
+      "expected": { "nameTierUsed": false, "cpf": "52998224725", "tier": 4 }
+    },
+    {
+      "id": "phone_discovery_skip_name_tier_when_too_many_results",
+      "component": "phone_discovery",
+      "input": { "phone": "11900004444", "leadName": "Jose Santos" },
+      "stubs": {
+        "workApiPhone": [],
+        "workApiNameCount": 25,
+        "cpfLookup": { "cpf": "39053344705", "nome_completo": "JOSE SANTOS" },
+        "diretrix": null,
+        "dbase": null
+      },
+      "expected": { "nameTierUsed": false, "tier": 3 }
+    },
+    {
+      "id": "batch_enrich_direct_partial_on_work_api_timeout",
+      "component": "batch_enrich_direct",
+      "input": { "body": { "phone": "11987654321", "name": "Joao Silva" } },
+      "stubs": {
+        "cpfDiscovery": { "cpf": "52998224725", "source": "work-api" },
+        "workApiCpf": { "timedOut": true, "data": null }
+      },
+      "expected": { "status": "partial", "success": true }
+    },
+    {
+      "id": "batch_enrich_direct_unenriched_when_no_cpf",
+      "component": "batch_enrich_direct",
+      "input": { "body": { "phone": "11987654321", "name": "Unknown Person" } },
+      "stubs": {
+        "cpfDiscovery": null
+      },
+      "expected": { "status": "unenriched", "success": true }
+    },
+    {
+      "id": "cron_schedule_boundary_1900_evening",
+      "component": "cron_schedule",
+      "input": { "timeZone": "America/Sao_Paulo", "localTime": "19:00" },
+      "expected": { "intervalMs": 1200000, "period": "evening" }
+    },
+    {
+      "id": "cron_schedule_boundary_2330_night",
+      "component": "cron_schedule",
+      "input": { "timeZone": "America/Sao_Paulo", "localTime": "23:30" },
+      "expected": { "intervalMs": 3600000, "period": "night" }
+    },
+    {
+      "id": "cron_schedule_boundary_0600_early_morning",
+      "component": "cron_schedule",
+      "input": { "timeZone": "America/Sao_Paulo", "localTime": "06:00" },
+      "expected": { "intervalMs": 1200000, "period": "early_morning" }
+    }
+  ],
+  "error": [
+    {
+      "id": "phone_discovery_continue_on_cpf_lookup_timeout",
+      "component": "phone_discovery",
+      "input": { "phone": "11900005555", "leadName": "Bruno Costa" },
+      "stubs": {
+        "workApiPhone": [],
+        "workApiName": [],
+        "cpfLookupError": "timeout",
+        "diretrix": { "cpf": "52998224725", "name": "BRUNO COSTA" },
+        "dbase": null
+      },
+      "expected": { "cpf": "52998224725", "tier": 4, "source": "diretrix" }
+    },
+    {
+      "id": "phone_discovery_not_found_when_all_tiers_fail",
+      "component": "phone_discovery",
+      "input": { "phone": "11900006666", "leadName": "Sem Match" },
+      "stubs": {
+        "workApiPhone": [],
+        "workApiName": [],
+        "cpfLookup": null,
+        "diretrix": null,
+        "dbase": null
+      },
+      "expected": { "result": null }
+    },
+    {
+      "id": "retry_policy_error_path_increments_retry",
+      "component": "retry_policy",
+      "input": {
+        "status": "partial",
+        "retryCount": 2,
+        "lastRetryAt": "2026-02-15T00:00:00Z",
+        "maxRetries": 5,
+        "enrichError": "Work API 500"
+      },
+      "expected": { "retryCountDelta": 1, "terminalFailure": false }
+    }
+  ]
+}

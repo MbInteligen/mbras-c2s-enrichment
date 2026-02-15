@@ -1,0 +1,101 @@
+{
+  "feature": "tier-calculator",
+  "version": 1,
+  "cases": [
+    {
+      "id": "ronald-like",
+      "description": "Inferred financial: baseline 35 + capital/admin signals = 45",
+      "input": {
+        "name": "Carlos Silva",
+        "phone": "11987654321",
+        "email": "carlos@empresa.com.br",
+        "income": { "state": "missing" },
+        "addresses": [{ "neighborhood": "Jardim Europa", "city": "São Paulo", "state": "SP" }],
+        "totalCompanyCapital": 175000,
+        "isCompanyAdministrator": true,
+        "discoveredCompanies": [
+          { "name": "Empresa A" },
+          { "name": "Empresa B" },
+          { "name": "Empresa C" },
+          { "name": "Empresa D" }
+        ]
+      },
+      "expected": {
+        "score": 45,
+        "score_tolerance": 0,
+        "tier": "silver",
+        "highlights_include": ["Perfil financeiro inferido"]
+      }
+    },
+    {
+      "id": "phone-only",
+      "description": "Minimal lead — bronze",
+      "input": {
+        "name": "Joao",
+        "phone": "11999990000",
+        "income": { "state": "missing" }
+      },
+      "expected": {
+        "score": 0,
+        "score_tolerance": 0,
+        "tier": "bronze",
+        "highlights_include": []
+      }
+    },
+    {
+      "id": "full-income-80k",
+      "description": "Direct income R$80k — gold tier, no inferred highlight",
+      "input": {
+        "name": "Carlos Silva",
+        "phone": "11987654321",
+        "email": "carlos@empresa.com.br",
+        "income": { "state": "value", "value": 80000 },
+        "addresses": [{ "neighborhood": "Jardim Europa" }],
+        "discoveredCompanies": [
+          { "name": "Empresa A" },
+          { "name": "Empresa B" }
+        ]
+      },
+      "expected": {
+        "score": 60,
+        "score_tolerance": 0,
+        "tier": "gold",
+        "highlights_include": [],
+        "highlights_exclude": ["Perfil financeiro inferido"]
+      }
+    },
+    {
+      "id": "basic-email",
+      "description": "Basic lead with email — stays bronze",
+      "input": {
+        "name": "Ana Silva",
+        "phone": "11988887777",
+        "email": "ana@gmail.com",
+        "income": { "state": "missing" }
+      },
+      "expected": {
+        "score": 0,
+        "score_tolerance": 0,
+        "tier": "bronze",
+        "highlights_include": []
+      }
+    },
+    {
+      "id": "explicit-zero",
+      "description": "income=0 blocks inferred financial (score 0 vs 10 for missing)",
+      "input": {
+        "name": "Carlos Silva",
+        "income": { "state": "value", "value": 0 },
+        "totalCompanyCapital": 200000,
+        "isCompanyAdministrator": true
+      },
+      "expected": {
+        "score": 0,
+        "score_tolerance": 0,
+        "tier": "bronze",
+        "highlights_include": [],
+        "highlights_exclude": ["Perfil financeiro inferido"]
+      }
+    }
+  ]
+}

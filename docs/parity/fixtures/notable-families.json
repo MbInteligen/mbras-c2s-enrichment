@@ -1,0 +1,61 @@
+{
+  "families": [
+    { "surname": "rudge", "context": "Família bancária de SP (ex-VP Itaú)" },
+    { "surname": "safra", "context": "Família do Banco Safra" },
+    { "surname": "setúbal", "context": "Família fundadora do Itaú" },
+    { "surname": "setubal", "context": "Família fundadora do Itaú" },
+    { "surname": "villela", "context": "Acionistas do Itaú Unibanco" },
+    { "surname": "simonsen", "context": "Economistas e empresários" },
+    { "surname": "lemann", "context": "3G Capital / AB InBev" },
+    { "surname": "sicupira", "context": "3G Capital" },
+    { "surname": "marinho", "context": "Organizações Globo" },
+    { "surname": "civita", "context": "Grupo Abril" },
+    { "surname": "frias", "context": "Grupo Folha" },
+    { "surname": "mesquita", "context": "O Estado de S. Paulo" },
+    { "surname": "ermírio", "context": "Grupo Votorantim" },
+    { "surname": "steinbruch", "context": "CSN" },
+    { "surname": "gerdau", "context": "Grupo Gerdau" },
+    { "surname": "odebrecht", "context": "Construtora Odebrecht" },
+    { "surname": "johannpeter", "context": "Grupo Gerdau" },
+    { "surname": "trajano", "context": "Magazine Luiza" },
+    { "surname": "feffer", "context": "Suzano Papel e Celulose" },
+    { "surname": "horn", "context": "Cyrela / Lindenberg" },
+    { "surname": "lindenberg", "context": "Lindenberg Construtora" },
+    { "surname": "safdie", "context": "Safdie Construtora" },
+    { "surname": "zarzur", "context": "EZTEC" },
+    { "surname": "auriemo", "context": "JHSF" },
+    { "surname": "nigri", "context": "Tecnisa" },
+    { "surname": "moll", "context": "Rede D'Or São Luiz" },
+    { "surname": "vélez", "context": "Nubank" },
+    { "surname": "velez", "context": "Nubank" },
+    { "surname": "klabin", "context": "Klabin S.A." },
+    { "surname": "lafer", "context": "Industriais e políticos" },
+    { "surname": "mindlin", "context": "Brasilpar / colecionador" },
+    { "surname": "ometto", "context": "Cosan / Raízen" }
+  ],
+  "too_common_for_notable": [
+    "camargo", "andrade", "batista", "diniz", "moreira", "bueno",
+    "constantino", "amaro", "torre", "klein", "trajano", "telles",
+    "esteves", "maggi"
+  ],
+  "rare_surnames": [
+    "passafaro", "falabella", "trussardi", "ferragamo", "agnelli",
+    "rosenbauer", "rothschild", "krupp", "porsche", "quandt",
+    "khoury", "haddad", "jafet", "maluf", "kassab", "gebara",
+    "yamazaki", "nakashima", "watanabe", "fujimori",
+    "kim", "park", "choi", "kang", "yoon",
+    "wang", "zhang", "chen", "huang", "wong",
+    "patel", "sharma", "ambani", "tata", "mittal",
+    "cohen", "levy", "goldberg", "rosenberg", "steinberg", "friedman",
+    "rabello", "penteado", "buarque"
+  ],
+  "common_surnames": [
+    "silva", "santos", "oliveira", "souza", "sousa", "lima", "pereira",
+    "costa", "rodrigues", "almeida", "nascimento", "ferreira", "araújo",
+    "araujo", "carvalho", "gomes", "martins", "rocha", "ribeiro", "alves",
+    "monteiro", "mendes", "barros", "freitas", "barbosa", "pinto", "moura",
+    "cavalcanti", "dias", "castro", "campos", "cardoso", "andrade", "vieira",
+    "moreira", "nunes", "lopes", "fernandes", "ramos", "gonçalves", "machado",
+    "marques", "melo", "correia", "azevedo", "teixeira", "batista"
+  ]
+}

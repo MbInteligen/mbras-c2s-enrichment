@@ -1,0 +1,23 @@
+{
+  "sp": [
+    "jardim europa", "jardim america", "jardim paulista", "jardim paulistano", "jardins",
+    "itaim bibi", "itaim", "vila nova conceicao", "vila nova conceição",
+    "moema", "vila olimpia", "vila olímpia",
+    "pinheiros", "alto de pinheiros", "alto pinheiros",
+    "higienopolis", "higienópolis", "perdizes", "pacaembu",
+    "morumbi", "cidade jardim", "real parque",
+    "brooklin", "brooklin novo", "campo belo", "vila mariana",
+    "paraiso", "paraíso", "consolacao", "consolação",
+    "cerqueira cesar", "cerqueira césar", "bela vista",
+    "butanta", "butantã",
+    "alphaville", "tambore", "tamboré"
+  ],
+  "rj": [
+    "leblon", "ipanema", "gavea", "gávea",
+    "jardim botanico", "jardim botânico", "lagoa",
+    "humaita", "humaitá", "botafogo", "flamengo",
+    "laranjeiras", "cosme velho", "urca",
+    "copacabana", "leme", "barra da tijuca",
+    "sao conrado", "são conrado", "joatinga"
+  ]
+}

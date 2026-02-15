@@ -1,0 +1,91 @@
+{
+  "feature": "high-value-detector",
+  "version": 1,
+  "cases": [
+    {
+      "id": "ronald-like",
+      "description": "Missing income with noble neighborhood + companies — gets partial adjustment",
+      "input": {
+        "leadName": "Carlos Silva",
+        "income": { "state": "missing" },
+        "addresses": [{ "neighborhood": "Jardim Europa", "city": "São Paulo", "state": "SP" }],
+        "companyCount": 4,
+        "totalCompanyCapital": 175000,
+        "isCompanyAdministrator": false
+      },
+      "expected": {
+        "score": 45,
+        "score_tolerance": 0,
+        "tier": "silver",
+        "isHighValue": false,
+        "incomeInferred": true
+      }
+    },
+    {
+      "id": "phone-only",
+      "description": "Minimal lead — no signals",
+      "input": {
+        "leadName": "Joao",
+        "income": { "state": "missing" }
+      },
+      "expected": {
+        "score": 0,
+        "score_tolerance": 0,
+        "tier": "none",
+        "isHighValue": false,
+        "incomeInferred": false
+      }
+    },
+    {
+      "id": "full-income-80k",
+      "description": "Direct income R$80k — no inferred flag",
+      "input": {
+        "leadName": "Carlos Silva",
+        "income": { "state": "value", "value": 80000 },
+        "addresses": [{ "neighborhood": "Jardim Europa" }],
+        "companyCount": 4
+      },
+      "expected": {
+        "score": 85,
+        "score_tolerance": 0,
+        "tier": "platinum",
+        "isHighValue": true,
+        "incomeInferred": false
+      }
+    },
+    {
+      "id": "basic",
+      "description": "Basic lead — no inflation",
+      "input": {
+        "leadName": "Ana Silva",
+        "income": { "state": "missing" },
+        "companyCount": 1,
+        "addresses": [{ "neighborhood": "Bairro Comum" }]
+      },
+      "expected": {
+        "score": 0,
+        "score_tolerance": 0,
+        "tier": "none",
+        "isHighValue": false,
+        "incomeInferred": false
+      }
+    },
+    {
+      "id": "explicit-zero",
+      "description": "income=0 disables missing-income adjustment (score 35 vs 45 for missing)",
+      "input": {
+        "leadName": "Carlos Silva",
+        "income": { "state": "value", "value": 0 },
+        "addresses": [{ "neighborhood": "Jardim Europa" }],
+        "companyCount": 4
+      },
+      "expected": {
+        "score": 35,
+        "score_tolerance": 0,
+        "tier": "silver",
+        "isHighValue": false,
+        "incomeInferred": false
+      }
+    }
+  ]
+}
