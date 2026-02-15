@@ -154,18 +154,18 @@
 
 **Priority:** MEDIUM — Operational visibility (Prometheus already in Phase 0)
 
-- [ ] Slack webhook alert service
-- [ ] Email alert service (Resend REST API via reqwest)
-- [ ] High-value lead alerts (async, non-blocking via `tokio::spawn`)
-- [ ] Service-down alerts (per-service tracking, composite rate-limit key)
-- [ ] Low enrichment rate alerts (threshold < 80%, check every 6 hours)
-- [ ] Alert rate-limiting (composite key `type:service`, prevent suppression across services)
-- [ ] Extended Prometheus metrics (HTTP latency histogram, API call counters, cache hit rates)
-- [ ] Service health tracking (6 services: Work API, Diretrix, DBase, Meilisearch, C2S, CPF Lookup)
-- [ ] Enrichment rate monitor (periodic check, exposed via `/stats/enrichment`)
-- [ ] Dashboard HTML (server-rendered monitoring page at `/dashboard`)
-- [ ] Dashboard session authentication (login/logout, 24h cookies, MBRAS branding)
-- [ ] API key auth middleware (for programmatic access)
+- [x] Slack webhook alert service
+- [x] Email alert service (Resend REST API via reqwest)
+- [x] High-value lead alerts (async, non-blocking via `tokio::spawn`)
+- [x] Service-down alerts (per-service tracking, composite rate-limit key)
+- [x] Low enrichment rate alerts (threshold < 80%, check every 6 hours)
+- [x] Alert rate-limiting (composite key `type:service`, prevent suppression across services)
+- [x] Extended Prometheus metrics (HTTP latency histogram, API call counters, cache hit rates)
+- [x] Service health tracking (6 services: Work API, Diretrix, DBase, Meilisearch, C2S, CPF Lookup)
+- [x] Enrichment rate monitor (periodic check, exposed via `/stats/enrichment`)
+- [x] Dashboard HTML (server-rendered monitoring page at `/dashboard`)
+- [x] Dashboard session authentication (login/logout, 24h cookies, MBRAS branding)
+- [x] API key auth middleware (for programmatic access)
 
 **Acceptance criteria:**
 - High-value lead triggers Slack + email alert within 60s
