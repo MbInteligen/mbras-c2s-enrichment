@@ -208,6 +208,25 @@
 
 ---
 
+## Cross-Language Parity Workflow (2026-02-15)
+
+Use this workflow for Rust parity work against `ts-c2s-api`:
+- Protocol: `docs/parity/CROSS_LANGUAGE_PARITY_PROTOCOL.md`
+- Linear template: `docs/parity/LINEAR_PARITY_ISSUE_TEMPLATE.md`
+
+Mandatory gates per parity issue:
+- `spec_ready`
+- `fixtures_shared`
+- `ts_green`
+- `rust_green`
+- `backport_done`
+- `docs_synced`
+- `done`
+
+Session rule:
+- If `memora`/`engram` are available, log key decisions there.
+- If unavailable, log decisions in parity contracts/backport reports under `docs/parity/`.
+
 ## Project Overview
 
 **Name**: `rust-c2s-api`  
@@ -1090,3 +1109,662 @@ Comparison: 4.8x faster than industry standard (300ms)
 **Status**: ✅ Fixed, tested, documented, ready to deploy
 
 ---
+
+## Recent Updates (2025-11-28)
+
+### ✅ C2S Lead Management & Enrichment Session
+
+#### C2S API - Marking Favorites ⭐
+
+**Discovery**: Found the correct way to mark/unmark leads as favorites in C2S.
+
+**Endpoint**: `PATCH /integration/leads/{lead_id}`
+
+**Correct JSON Structure**:
+```json
+{
+  "data": {
+    "attributes": {
+      "is_favorite": true
+    }
+  }
+}
+```
+
+**Example Request**:
+```bash
+curl -X PATCH "https://api.contact2sale.com/integration/leads/{lead_id}" \
+  -H "Authorization: Bearer $C2S_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"data": {"attributes": {"is_favorite": true}}}'
+```
+
+**Common Mistakes**:
+- ❌ `{"is_favorite": true}` - Returns HTTP 422
+- ❌ `{"lead": {"is_favorite": true}}` - Returns HTTP 422
+- ❌ `{"attributes": {"is_favorite": true}}` - Returns HTTP 422
+- ✅ `{"data": {"attributes": {"is_favorite": true}}}` - Returns HTTP 200
+
+#### C2S API - Sending Enrichment Messages
+
+**Endpoint**: `POST /integration/leads/{lead_id}/create_message`
+
+**JSON Structure**:
+```json
+{
+  "body": "Message content here..."
+}
+```
+
+**Response Codes**:
+- HTTP 201 = Success (Created) ✅
+- HTTP 200 = Success ✅
+
+**Note**: HTTP 201 means success, not failure!
+
+#### C2S Data Export
+
+**Exported Files** (saved to ~/Downloads):
+1. `c2s_leads_export_YYYYMMDD_HHMMSS.csv` - All leads (475 leads, 54 columns)
+2. `c2s_leads_com_estrela.csv` - Favorited leads only (56 leads, 16 columns)
+
+**CSV Columns (Full Export)**:
+- Lead: lead_id, internal_id, created_at, updated_at, last_activity_date
+- Customer: customer_id, customer_name, customer_email, customer_phone, customer_phone2
+- Product: product_id, product_description, product_ref, product_price, product_neighbourhood
+- Seller: seller_id, seller_name, seller_email, seller_phone, seller_external_id
+- Status: lead_status_id, lead_status_name, lead_status_alias, funnel_status
+- Source: lead_source_id, lead_source_name, channel_id, channel_name
+- Details: description, observation, is_favorite, is_archived, is_done
+- Messages: num_messages, first_message, last_message_body
+- Facebook: fb_leadgen_id, fb_page_id, fb_form_id, fb_ad_id
+- Timestamps: read_at, replied_at, done_deal_at, url
+
+#### Lead Enrichment Statistics (2025-11-28)
+
+**Last 20 Leads Status**:
+- ✅ Enriched: 12/20 (60%)
+- ❌ Not enriched: 13/20 (40%)
+
+**Enrichment Attempt Results**:
+- Attempted: 13 leads
+- Success: 0 (0%)
+- Failed - CPF not found: 13 (100%)
+
+**Why CPF Not Found**:
+1. **New phone numbers**: Recently acquired, not yet in databases
+2. **Corporate phones**: Business lines without personal CPF
+3. **Prepaid phones**: SIM cards without complete registration
+4. **Regional coverage**: Some DDDs have lower database coverage (especially outside SP)
+
+**Leads Without CPF (by DDD)**:
+| Lead | DDD | Region |
+|------|-----|--------|
+| Rebecca Catalucci Arquitetura | 11 | SP |
+| Cristiane Basílio Gonçalves | 11 | SP |
+| Paulo Fernando Campana | 14 | SP Interior |
+| Rebecca Liz | 85 | CE (Fortaleza) |
+| Monica | 11 | SP |
+| Bruna da Costa Melo | 11 | SP |
+| Adriano Pinhas | 16 | SP Interior |
+| Gustavo | 11 | SP |
+| Moacir Pinheiro | 84 | RN (Natal) |
+| Katia Affonso Fernandes | 11 | SP |
+| Riquelme Caio | 91 | PA (Belém) |
+| Tatiana Marques | 11 | SP |
+| Diogo Almeida | 11 | SP |
+
+**Note**: DDDs outside SP (85, 84, 91) typically have lower coverage in enrichment databases.
+
+#### Successful Enrichments Today
+
+**Rodrigo Bibiano**:
+- ✅ CPF: 89075757620
+- ✅ Full Name: RODRIGO BIBIANO DARLY
+- ✅ Score: 59 (ALTÍSSIMO RISCO)
+- ✅ Class: Elites Brasileiras - Elite urbana qualificada
+- ✅ Message sent to C2S
+
+#### Lead Potential Scoring Algorithm
+
+**Scoring System (0-100 points)**:
+
+| Category | Criteria | Points |
+|----------|----------|--------|
+| **Renda** | > R$ 10,000 | 40 |
+| | > R$ 5,000 | 35 |
+| | > R$ 3,000 | 30 |
+| | > R$ 2,000 | 20 |
+| | < R$ 2,000 | 10 |
+| **Score Crédito** | > 700 | 30 |
+| | > 500 | 25 |
+| | > 300 | 20 |
+| | > 200 | 10 |
+| | < 200 | 5 |
+| **Classe Social** | Elite/Alta | 20 |
+| | Urbana/Média | 15 |
+| | Other | 5 |
+| **Escolaridade** | Superior/Pós | 10 |
+| | Médio | 7 |
+| | Other | 5 |
+| **Empresário** | Has company | +5 |
+
+**Top Premium Leads Identified**:
+1. MARCIA REGINA MOLLA GIAO - 105/100 (R$ 11,410.72)
+2. Gilda Celia Del Nero Fortunato - 100/100 (R$ 8,058.94)
+3. Raul Penteado de Oliveira Neto - 95/100 (R$ 10,317.95, 121 empresas!)
+4. REGINA MAURA GABRILLI - 90/100 (R$ 5,339.87)
+5. IVAN GONCALVES RIBEIRO GUIMARAES - 90/100 (R$ 3,887.09)
+
+#### Key Scripts Created
+
+**Location**: `/tmp/` (temporary scripts for this session)
+
+1. `enrich_all_pending.py` - Enrich multiple leads via API
+2. `mark_favorites_final.py` - Mark leads as favorites in C2S
+3. `export_c2s_leads.py` - Export all leads to CSV
+4. `list_favorites.py` - List all favorited leads
+5. `check_last_20.py` - Check enrichment status of recent leads
+6. `relatorio_leads_premium.py` - Generate premium leads report
+
+#### API Endpoints Summary
+
+**C2S Integration API**:
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/integration/leads?per_page=X&page=Y` | List leads |
+| GET | `/integration/lead/{id}` | Get lead details |
+| PATCH | `/integration/leads/{id}` | Update lead (favorites) |
+| POST | `/integration/leads/{id}/create_message` | Send message |
+
+**Local Enrichment API**:
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | `/api/v1/c2s/enrich/{lead_id}` | Enrich lead from C2S |
+| GET | `/api/v1/leads/process?id={lead_id}` | Trigger enrichment |
+
+#### Rate Limiting Notes
+
+- **C2S API**: Returns HTTP 429 after ~20 pages of requests
+- **Work API**: 3 second delay recommended between requests
+- **DBase/Mimir**: No strict rate limiting observed
+
+---
+
+## Recent Updates (2025-12-09)
+
+### ✅ Google Ads Ad Group Name Integration
+
+#### Problem
+C2S leads from Google Ads were showing generic campaign names like "Stoc MBRAS 2025" instead of specific ad group (adset) names like "Casa Jardim Europa - Condomínio", making it harder to track which property attracted each lead.
+
+#### Solution Implemented
+
+**1. Updated Data Model** (`src/google_ads_models.rs:18-30`)
+
+Added new fields to `GoogleAdsWebhookPayload` struct:
+```rust
+pub struct GoogleAdsWebhookPayload {
+    pub campaign_id: i64,
+    pub campaign_name: Option<String>,      // NEW
+    pub ad_group_id: Option<i64>,           // NEW
+    pub ad_group_name: Option<String>,      // NEW - This is what we display
+    // ... other fields
+}
+```
+
+**2. Smart Priority System** (`src/google_ads_models.rs:160-187`)
+
+Updated `get_campaign_name()` method with 4-level fallback:
+
+**Priority 1:** Use `ad_group_name` if available ✅ **BEST**
+- Examples: "Casa Jardim Europa - Condomínio", "Dona Elisa - Jardim Paulistano"
+
+**Priority 2:** Use `campaign_name` from payload
+- Example: "Campanha Stoc MBRAS 2025"
+
+**Priority 3:** Hardcoded campaign ID mapping (legacy)
+- Campaign 23184380368 → "Stoc MBRAS 2025"
+- Campaign 22866487607 → "MBRAS - LUX 600"
+
+**Priority 4:** Generic format
+- "Google Ads - Campanha {id}"
+
+**3. Removed "ORIGEM:" Prefix** (`src/google_ads_models.rs:135`)
+
+Changed lead description format:
+
+**Before:**
+```
+ORIGEM: Stoc MBRAS 2025
+
+[enrichment data...]
+```
+
+**After:**
+```
+Casa Jardim Europa - Condomínio
+
+[enrichment data...]
+```
+
+#### Ad Groups in Campanha Stoc MBRAS 2025
+
+**All Ad Sets Configured**:
+1. **Stoc-re** (ID: 186816413945) - Generic remarketing
+2. **Dona Elisa - Jardim Paulistano** (ID: 186546663977)
+3. **Teviot - Vila Nova Conceição** (ID: 186546866617)
+4. **Laplace - Campo Belo** (ID: 187118210845)
+5. **Casa Jardim Europa - Condomínio** (ID: 187145758017)
+6. **Itaverá - Cidade Jardim** (ID: 189485113675)
+
+#### Payload Sent to C2S
+
+**Complete Lead Payload** (example for Gihad Ayache):
+
+```json
+{
+  "data": {
+    "type": "lead",
+    "attributes": {
+      "name": "Gihad Ayache",
+      "phone": "+5511982922544",
+      "email": "gihadayache@gmail.com",
+      "description": "Casa Jardim Europa - Condomínio\n\n[Enrichment data from Work API]\n\nNome Completo\n💰 Classe B1\n📍 Jardim Europa, São Paulo",
+      "type_negotiation": "Compra",
+      "source": "Google Ads",
+      "seller_id": "DEFAULT_SELLER_ID",
+      "product_attributes": {
+        "description": "Casa Jardim Europa - Condomínio"
+      }
+    }
+  }
+}
+```
+
+**Key Changes**:
+- `description` field: Now starts with ad group name (no "ORIGEM:" prefix)
+- `product_attributes.description`: Also uses ad group name
+
+**Where Ad Group Name Appears** (2 places):
+1. **Beginning of `description` field** - First line of lead notes
+2. **`product_attributes.description`** - Product/property selector in C2S
+
+#### Database Storage
+
+**Google Ads leads table** (`public.google_ads_leads`):
+- `ad_group_id` and `ad_group_name` stored in `payload_raw` JSONB column
+- Can query specific ad groups: 
+```sql
+SELECT * FROM google_ads_leads 
+WHERE payload_raw->>'ad_group_name' = 'Casa Jardim Europa - Condomínio';
+```
+
+#### Real-World Example
+
+**Lead**: Gihad Ayache  
+**Submitted**: 2025-12-06 14:35:10 BRT  
+**Campaign**: Campanha Stoc MBRAS 2025 (ID: 23184380368)  
+**Ad Group**: Casa Jardim Europa - Condomínio (ID: 187145758017)  
+
+**What C2S Shows**:
+- Product: "Casa Jardim Europa - Condomínio"
+- Description: "Casa Jardim Europa - Condomínio\n\n[enrichment]..."
+
+**Before This Update**:
+- Product: "Stoc MBRAS 2025"
+- Description: "ORIGEM: Stoc MBRAS 2025\n\n[enrichment]..."
+
+#### Files Modified
+
+| File | Lines | Changes |
+|------|-------|---------|
+| `src/google_ads_models.rs` | 18-30 | Added ad_group fields to struct |
+| `src/google_ads_models.rs` | 135 | Removed "ORIGEM:" prefix |
+| `src/google_ads_models.rs` | 160-187 | Updated get_campaign_name() with priority system |
+| `src/google_ads_models.rs` | 199-337 | Updated tests with new fields |
+
+#### Testing Results
+
+**Unit Tests**: ✅ All 4 tests passing
+- `test_extract_name` ✅
+- `test_extract_email` ✅
+- `test_extract_cpf` ✅
+- `test_get_campaign_name_priority` ✅ (new test covering all 4 priority levels)
+
+**Build Status**: ✅ Compiles successfully
+
+#### Benefits
+
+1. **Better Lead Tracking**: Brokers can see which specific property attracted each lead
+2. **Accurate Attribution**: Marketing can measure performance by ad group, not just campaign
+3. **Cleaner UI**: No redundant "ORIGEM:" prefix
+4. **Backward Compatible**: Works with old leads that don't have ad_group_name (falls back to campaign)
+5. **Future-Proof**: Priority system adapts to different Google Ads configurations
+
+#### Migration Notes
+
+**For Existing Leads**:
+- Old leads without `ad_group_name` will fall back to campaign name
+- No data migration required
+- Database schema unchanged (JSONB payload stores everything)
+
+**For New Webhooks**:
+- Google Ads must send `ad_group_name` in webhook payload
+- If missing, system gracefully falls back to campaign name
+
+---
+
+## Recent Updates (2025-12-01)
+
+### ✅ Lead Enrichment & Family Research Session
+
+#### Lead Ranking & Favorites Management
+
+**Top Enriched Leads Ranked by Potential**:
+
+| # | Nome | Renda | Score | Risco | Bairro | Cidade | Empresas |
+|---|------|-------|-------|-------|--------|--------|----------|
+| 1 | DORIS RUTHY LEWIS | R$ 24.771 | 955 | BAIXÍSSIMO | Higienópolis | São Paulo/SP | 0 |
+| 2 | ANDREA CHAMMAS KURBHI | R$ 15.521 | 472 | MÉDIO | Vila Nova Conceição | São Paulo/SP | 0 |
+| 3 | ALEXANDRE CARVALHO KALLAS | R$ 13.817 | 595 | BAIXO | Sta Doroteia | Pouso Alegre/MG | 0 |
+| 4 | CRISTIANE BASILIO GONCALVES | R$ 9.838 | 966 | BAIXÍSSIMO | Centro | Piracicaba/SP | 0 |
+| 5 | ALBERTO GOULART ABBUD | R$ 7.361 | 955 | BAIXÍSSIMO | Bosque da Saúde | São Paulo/SP | 4 |
+| 6 | LEONARDO RODRIGUES MACHADO | R$ 6.090 | 461 | MÉDIO | Ipanema | Rio de Janeiro/RJ | **19** |
+
+**Leads Marked as Favorites** ⭐:
+- Doris Ruthy Lewis (R$ 24.771, Higienópolis)
+- Alberto Goulart Abbud (R$ 7.361, 4 empresas, Bosque da Saúde)
+- Leonardo Rodrigues Machado (R$ 6.090, **19 empresas**, Ipanema)
+- Andrea Chammas Kurbhi (R$ 15.521, Vila Nova Conceição) - previously marked
+- Jose Renato Pedroza (R$ 6.218) - previously marked
+
+#### Family Research: Rodrigues Machado (Ipanema/RJ)
+
+**Discovery**: Leonardo Rodrigues Machado belongs to a wealthy family, all residing in Ipanema, RJ.
+
+**Family Members Researched & Saved to Database**:
+
+| Nome | CPF | Renda | Score | Parentesco | Bairro |
+|------|-----|-------|-------|------------|--------|
+| GUSTAVO RODRIGUES MACHADO | 02590893701 | **R$ 17.820** | **844** | Irmão | Ipanema |
+| LEONARDO RODRIGUES MACHADO | 08575171712 | R$ 6.090 | 461 | Lead | Ipanema |
+| FABIO RODRIGUES MACHADO | 01673905706 | - | 470 | Irmão | Ipanema |
+| MARIA HELENA RODRIGUES MACHADO | 01673356770 | R$ 1.283 | 97 | Mãe | Ipanema |
+
+**Key Insights**:
+- **All 4 family members live in Ipanema** - traditional family from one of Rio's most expensive neighborhoods
+- **Gustavo has highest income** (R$ 17.820) and best credit score (844)
+- **Leonardo has 19 active companies** + works at Visagio (top consulting firm)
+- **Fabio is a lawyer** (fabioadvogado@gmail.com, fabio@freireadvocacia.com.br) with 3 companies
+- **Property value estimate**: Ipanema apartments worth R$ 2-5 million minimum
+
+**Professional Profiles**:
+- Leonardo: Consultant at Visagio, 19 companies (investor profile)
+- Fabio: Lawyer at Freire Advocacia, 3 companies (since 1993)
+- Gustavo: High earner, excellent credit
+
+#### Manual Enrichment Save Process
+
+**Issue Discovered**: The `/api/v1/enrich` endpoint does NOT automatically save to database.
+
+**Solution**: Manual save via SQL for family members:
+
+```sql
+-- Step 1: Insert into core.parties
+INSERT INTO core.parties (party_type, cpf_cnpj, full_name, normalized_name, sex, enriched)
+VALUES ('person', 'XXXXXXXXXXX', 'FULL NAME', 'full name', 'M', true)
+ON CONFLICT (cpf_cnpj) DO UPDATE SET enriched = true, updated_at = now();
+
+-- Step 2: Fetch Work API data and insert enrichment
+-- (via curl to /api/v1/work/modules/all?documento=CPF)
+
+-- Step 3: Insert into core.party_enrichments
+INSERT INTO core.party_enrichments (party_id, raw_payload, provider, quality_score, enriched_at)
+SELECT id, '<JSON_DATA>'::jsonb, 'work_api', 0.8, now()
+FROM core.parties WHERE cpf_cnpj = 'XXXXXXXXXXX'
+ON CONFLICT (party_id) DO UPDATE SET raw_payload = EXCLUDED.raw_payload, enriched_at = now();
+```
+
+**Note**: For automatic saving, use `/api/v1/c2s/enrich/{lead_id}` which runs the full workflow.
+
+#### C2S Message Sent
+
+**Lead**: Leonardo Rodrigues Machado  
+**Lead ID**: 28684ce47b7363d6eb623cdedb94318c  
+**Message Content**: Full enriched profile including personal data, economic data, address, contacts, companies (19), and family info.
+
+#### Database Statistics After Session
+
+**New Records Added**:
+- 3 new parties (Fabio, Gustavo, Maria Helena)
+- 3 new party_enrichments with full Work API data
+- All family members now queryable by CPF
+
+**Query to View Family**:
+```sql
+SELECT 
+    p.full_name,
+    p.cpf_cnpj,
+    pe.raw_payload->'DadosEconomicos'->>'renda' as renda,
+    pe.raw_payload->'DadosEconomicos'->'score'->>'scoreCSB' as score,
+    pe.raw_payload->'enderecos'->0->>'bairro' as bairro
+FROM core.parties p
+JOIN core.party_enrichments pe ON p.id = pe.party_id
+WHERE p.cpf_cnpj IN ('01673905706', '02590893701', '01673356770', '08575171712')
+ORDER BY renda DESC;
+```
+
+---
+
+
+## Recent Updates (2025-12-15)
+
+### ✅ Lead Enrichment Session - 72 Leads Processed
+
+#### Summary
+- **Total Leads**: 72 (since Nov 30, 2025)
+- **Successfully Enriched**: 67 (93.1%)
+- **Not Found**: 3 (4.2%)
+- **Wrong Match Removed**: 2 (2.8%)
+
+#### Enrichment Sources Used
+
+| Source | Count | % | Description |
+|--------|-------|---|-------------|
+| 📱 Phone Lookup | 40 | 58% | WORK API `phone` module - returns phone owner's CPF |
+| 👤 Name Search | 29 | 42% | WORK API `name` module - searches by full name |
+
+**Key Insight**: Phone lookups return the **phone owner's CPF**, which may be a family member (spouse, parent, child). This is acceptable and expected.
+
+#### Wrong Matches Detected & Removed
+
+Two leads were identified as **wrong person** matches (same first+last name, different family):
+
+| Lead Name | Wrong Match | Issue |
+|-----------|-------------|-------|
+| Andrezza Drosghic Vieira Moreira | ANDREZZA CANELA FARIAS MOREIRA | Different middle names = different family |
+| humberto ianoni junior | HUMBERTO BASSO JUNIOR | Different middle names = different family |
+
+**Actions Taken**:
+1. ✅ CPF removed from database (`enrichment_status = 'wrong_match'`)
+2. ✅ Correction message sent to C2S
+
+#### Name Matching Rules Documented
+
+**✅ Acceptable Variations**:
+- Missing middle names: `Anselmo Dos Anjos Santos` → `ANSELMO DOS SANTOS`
+- Added middle names: `Karina Simões` → `KARINA APARECIDA SIMOES`
+- Common prepositions ignored: DOS, DAS, DE, DA, DO
+
+**🔴 Wrong Person Indicators**:
+- Same first + last name but **different family/middle names**
+- Example: `Andrezza DROSGHIC VIEIRA Moreira` ≠ `Andrezza CANELA FARIAS Moreira`
+
+#### Scripts Created
+
+| Script | Purpose | Location |
+|--------|---------|----------|
+| `enrich_phone_then_name.sh` | Multi-strategy: phone first, name fallback | mbras-c2s/ |
+| `send_enrichment_to_c2s.sh` | Send enrichment messages to C2S | mbras-c2s/ |
+| `send_enrichment_to_c2s_v2.sh` | Improved version with timeouts | mbras-c2s/ |
+
+#### Documentation Created
+
+- **`ENRICHMENT_REPORT_2025-12-15.md`** - Complete session report with all 72 leads
+
+---
+
+## 🎯 NEXT SESSION: Improve Lead Enrichment Matching
+
+### Linear Project Created
+**URL**: https://linear.app/rmlf/project/improve-lead-enrichment-matching-0b538585b819
+
+### Issues to Implement (Priority Order)
+
+#### 1. RML-535: Store enrichment source in database (DO FIRST)
+**Why First**: Foundation for all other improvements - need to know HOW each CPF was found.
+
+```sql
+ALTER TABLE public.google_ads_leads 
+ADD COLUMN enrichment_source TEXT;
+-- Values: phone, name_exact, name_fuzzy, database, manual
+```
+
+**Files to modify**:
+- `src/db_storage.rs` - Add source parameter to storage functions
+- `src/handlers.rs` - Pass source when enriching
+- Database migration script
+
+#### 2. RML-533: Detect same-first-last-different-middle patterns
+**Why**: Prevent wrong matches like Andrezza case.
+
+**Algorithm**:
+```rust
+fn is_suspicious_match(lead_name: &str, enriched_name: &str) -> bool {
+    let lead_parts = parse_name(lead_name);
+    let enriched_parts = parse_name(enriched_name);
+    
+    // First + Last match but middle names completely different
+    if lead_parts.first == enriched_parts.first 
+        && lead_parts.last == enriched_parts.last 
+        && !any_middle_match(&lead_parts.middle, &enriched_parts.middle) {
+        return true; // SUSPICIOUS
+    }
+    false
+}
+```
+
+#### 3. RML-534: Add confidence score to name matches
+**Scoring**:
+- 100%: Exact full name match
+- 90%: First + Last match, middle names subset
+- 70%: First + Last match, no middle names in lead
+- 50%: Partial match
+- 0%: Suspicious (different middle names)
+
+#### 4. RML-536: Automated validation before C2S
+**Rules**:
+- Phone lookups: Always approve (different person OK)
+- Name matches ≥80% confidence: Auto-approve
+- Name matches 50-79%: Queue for review
+- Name matches <50%: Auto-reject
+
+#### 5. RML-538: Unit tests for name matching
+**Test cases to cover**:
+```rust
+// Should match
+assert!(matches("Anselmo Dos Anjos Santos", "ANSELMO DOS SANTOS"));
+assert!(matches("Karina Simoes", "KARINA APARECIDA SIMOES"));
+
+// Should NOT match (different family)
+assert!(!matches("Andrezza Drosghic Vieira Moreira", "ANDREZZA CANELA FARIAS MOREIRA"));
+assert!(!matches("humberto ianoni junior", "HUMBERTO BASSO JUNIOR"));
+```
+
+#### 6. RML-537: Documentation
+- Update README with matching rules
+- Add examples of edge cases
+- Document the confidence scoring system
+
+### Quick Start for Next Session
+
+```bash
+# 1. Check current status
+cd /Users/ronaldo/Projects/MBRAS/tools/mbras-c2s/rust-c2s-api
+
+# 2. View Linear issues
+open "https://linear.app/rmlf/project/improve-lead-enrichment-matching-0b538585b819"
+
+# 3. Start with RML-535 (add enrichment_source column)
+psql $DB_URL -c "ALTER TABLE public.google_ads_leads ADD COLUMN enrichment_source TEXT;"
+
+# 4. Update Rust code to set source during enrichment
+# See src/handlers.rs and src/db_storage.rs
+```
+
+### Key Files for Next Session
+
+| File | Purpose |
+|------|---------|
+| `src/handlers.rs` | Enrichment endpoint handlers |
+| `src/db_storage.rs` | Database storage functions |
+| `src/services.rs` | WORK API service calls |
+| `src/enrichment.rs` | Enrichment logic |
+| `tests/enrichment_tests.rs` | Enrichment tests |
+
+---
+
+---
+
+## Scoring Parity Status (2026-02-15)
+
+### Phase 3: Lead Scoring — COMPLETE
+
+All three scoring modules ported from `ts-c2s-api` with fixture-driven parity tests:
+
+| Module | Rust File | TS Source | Tests |
+|--------|-----------|-----------|-------|
+| Lead Quality Score | `src/scoring/quality.rs` | `src/services/lead-quality.service.ts` | 5 fixture cases |
+| High-Value Detector | `src/scoring/high_value.rs` | `src/utils/high-value-detector.ts` | 5 fixture cases |
+| Tier Calculator | `src/scoring/tier.rs` | `src/services/tier-calculator.service.ts` | 5 fixture cases |
+
+Supporting modules:
+- `src/scoring/neighborhoods.rs` — Noble neighborhood lookup (SP + RJ)
+- `src/scoring/families.rs` — Notable families, rare/common surname detection
+
+### Shared Fixtures
+
+Canonical fixtures at `docs/parity/fixtures/`:
+- `lead-quality-scoring.json` (5 cases)
+- `high-value-detector.json` (5 cases)
+- `tier-calculator.json` (5 cases)
+- `neighborhoods.json` (SP + RJ lists)
+- `notable-families.json` (families, rare, common surnames)
+
+Sync to TS: `scripts/sync-fixtures.sh`
+Drift guard: `scripts/check-fixture-hash.sh`
+Parity gate: `scripts/run-parity-check.sh`
+
+### Prometheus Metrics
+
+`src/obs/metrics.rs` — Histogram + labeled counters:
+- `enrichment_requests_total` (status)
+- `enrichment_duration_seconds` (tier)
+- `cpf_discovery_total` (tier, result)
+- `http_requests_total` (method, route_template, status)
+
+Endpoint: `GET /metrics`
+
+### Test Results
+
+- Rust: 25 tests passing (22 lib + 3 fixture)
+- TS: 292 tests passing (277 existing + 15 fixture)
+- Parity: all 15 fixture cases produce identical output
+
+### Key Design Decisions
+
+- **Tri-state income**: `Option<f64>` — `None` = missing, `Some(0.0)` = explicit zero
+- **Score clamping**: Rust adds `score.min(100)` (TS trusts bucket math)
+- **CompanyCount**: `Option<u32>` prevents negative values TS allows
+- **Exhaustive enums**: `Grade`, `Category`, `ScoreMethod`, `TierLevel` — no string unions
