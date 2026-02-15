@@ -17,6 +17,9 @@ mod obs;
 mod scoring;
 mod cpf;
 mod name_matcher;
+mod discovery;
+mod retry;
+mod batch;
 
 use axum::{
     http::StatusCode,
@@ -212,6 +215,9 @@ async fn main() -> anyhow::Result<()> {
             "/api/v1/webhooks/google-ads",
             post(google_ads_handler::google_ads_webhook_handler),
         )
+        // Batch enrichment endpoints
+        .route("/batch/enrich-direct", post(batch::enrich_direct))
+        .route("/batch/retry-failed", post(batch::retry_failed))
         .layer(
             ServiceBuilder::new()
                 // Request size limit: 5MB max payload (prevents memory exhaustion)

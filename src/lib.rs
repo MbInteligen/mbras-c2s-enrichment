@@ -23,3 +23,6 @@ pub mod webhook_models;
 pub mod scoring;
 pub mod cpf;
 pub mod name_matcher;
+pub mod discovery;
+pub mod retry;
+pub mod batch;

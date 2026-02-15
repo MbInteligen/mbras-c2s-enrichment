@@ -160,6 +160,9 @@ pub async fn google_ads_webhook_handler(
         }
     };
 
+    // Get campaign name for product description
+    let campaign_name = payload.get_campaign_name();
+
     // Step 8: Create lead in C2S directly (using JSON:API format)
     let c2s_lead_id = c2s_service
         .create_lead(
@@ -170,8 +173,11 @@ pub async fn google_ads_webhook_handler(
             Some("Google Ads"),
             product.as_deref(),
             app_state.config.c2s_default_seller_id.as_deref(),
+            Some(&campaign_name),
         )
         .await?;
+
+    let latency_ms = start.elapsed().as_millis() as i32;
 
     tracing::info!("✅ Lead created in C2S: {} ({}ms)", c2s_lead_id, latency_ms);
 
@@ -227,17 +233,17 @@ async fn is_duplicate_lead(db: &PgPool, google_lead_id: &str) -> Result<bool, Ap
 }
 
 /// Perform inline enrichment: Diretrix → Work API
+///
+/// Returns a clean, minimal enrichment summary for the C2S lead card.
+/// Full enrichment data is stored in the database, not displayed in the card.
 async fn perform_inline_enrichment(
     state: &std::sync::Arc<crate::handlers::AppState>,
     cpf_from_form: Option<&str>,
     phone: Option<&str>,
     email: Option<&str>,
 ) -> Result<String, AppError> {
-    let mut enrichment = String::new();
-
     // Try to get CPF (priority: form > Diretrix lookup)
     let cpf = if let Some(cpf) = cpf_from_form {
-        enrichment.push_str(&format!("📄 CPF do Formulário: {}\n", cpf));
         Some(cpf.to_string())
     } else {
         // Try Diretrix lookup by phone/email (using optimized lookup)
@@ -250,12 +256,12 @@ async fn perform_inline_enrichment(
         } else {
             // Fallback to Diretrix
             let lookup_result =
-                crate::enrichment::find_cpf_via_diretrix(phone, email, &state.config).await;
+                crate::enrichment::find_cpf_via_diretrix(phone, email, &state.config, None).await;
 
             match lookup_result {
                 Ok(result) if !result.cpfs.is_empty() => {
                     let cpf_found = result.cpfs[0].clone();
-                    enrichment.push_str(&format!("🔍 CPF Encontrado: {}\n", cpf_found));
+                    tracing::info!("🔍 Diretrix: Found CPF {}", cpf_found);
                     Some(cpf_found)
                 }
                 Ok(_) => {
@@ -272,93 +278,77 @@ async fn perform_inline_enrichment(
 
     // If we have CPF, enrich with Work API
     if let Some(cpf_val) = cpf {
-        enrichment.push_str("\n💰 Dados Econômicos:\n");
-
         let work_api = WorkApiService::new(&state.config);
         match work_api.fetch_all_modules(&cpf_val).await {
             Ok(work_data) => {
-                // Extract key enrichment data from JSON
-                if let Some(basic) = work_data.get("DadosBasicos") {
-                    if let Some(nome) = basic.get("nome").and_then(|v| v.as_str()) {
-                        enrichment.push_str(&format!("   • Nome Completo: {}\n", nome));
-                    }
-                    if let Some(idade) = basic.get("idade").and_then(|v| v.as_i64()) {
-                        enrichment.push_str(&format!("   • Idade: {} anos\n", idade));
-                    }
-                }
-
-                if let Some(econ) = work_data.get("DadosEconomicos") {
-                    if let Some(renda) = econ.get("renda").and_then(|v| v.as_str()) {
-                        enrichment.push_str(&format!("   • Renda Estimada: {}\n", renda));
-                    }
-                    if let Some(score) = econ.get("score") {
-                        if let Some(nota) = score.get("nota").and_then(|v| v.as_str()) {
-                            enrichment.push_str(&format!("   • Score: {}\n", nota));
-                        }
-                    }
-                }
-
-                // Addresses
-                if let Some(enderecos) = work_data.get("enderecos").and_then(|v| v.as_array()) {
-                    if !enderecos.is_empty() {
-                        enrichment.push_str("\n🏠 Endereços:\n");
-                        for (i, addr) in enderecos.iter().take(2).enumerate() {
-                            enrichment.push_str(&format!("   {}. ", i + 1));
-                            if let Some(log) = addr.get("logradouro").and_then(|v| v.as_str()) {
-                                enrichment.push_str(log);
-                            }
-                            if let Some(num) = addr.get("numero").and_then(|v| v.as_str()) {
-                                enrichment.push_str(&format!(", {}", num));
-                            }
-                            if let Some(bairro) = addr.get("bairro").and_then(|v| v.as_str()) {
-                                enrichment.push_str(&format!(" - {}", bairro));
-                            }
-                            if let Some(cidade) = addr.get("cidade").and_then(|v| v.as_str()) {
-                                enrichment.push_str(&format!(", {}", cidade));
-                            }
-                            if let Some(uf) = addr.get("uf").and_then(|v| v.as_str()) {
-                                enrichment.push_str(&format!("/{}", uf));
-                            }
-                            if let Some(cep) = addr.get("cep").and_then(|v| v.as_str()) {
-                                enrichment.push_str(&format!(" (CEP: {})", cep));
-                            }
-                            enrichment.push_str("\n");
-                        }
-                    }
-                }
-
-                // Additional phones
-                if let Some(telefones) = work_data.get("telefones").and_then(|v| v.as_array()) {
-                    if !telefones.is_empty() {
-                        enrichment
-                            .push_str(&format!("\n📱 Telefones Adicionais: {}\n", telefones.len()));
-                    }
-                }
-
-                // Additional emails
-                if let Some(emails) = work_data.get("emails").and_then(|v| v.as_array()) {
-                    if !emails.is_empty() {
-                        enrichment.push_str(&format!("📧 E-mails Adicionais: {}\n", emails.len()));
-                    }
-                }
-
+                // Build clean, minimal enrichment summary
+                let enrichment = format_clean_enrichment(&work_data);
                 tracing::info!("✅ Work API enrichment successful");
+                Ok(enrichment)
             }
             Err(e) => {
                 tracing::warn!("⚠️  Work API enrichment failed: {}", e);
-                enrichment.push_str(&format!("\n⚠️  Enriquecimento parcial (erro: {})\n", e));
+                // Return minimal info even on failure
+                Ok(format!(
+                    "CPF: {} - Enriquecimento pendente",
+                    mask_cpf(&cpf_val)
+                ))
             }
         }
     } else {
-        enrichment.push_str("\n⚠️  CPF não disponível - Enriquecimento limitado\n");
+        // No CPF available - return empty (card will just show basic info)
+        Ok(String::new())
+    }
+}
+
+/// Format a clean, minimal enrichment summary for the C2S lead card.
+/// Shows only the most relevant info: name, income range, and primary location.
+fn format_clean_enrichment(work_data: &serde_json::Value) -> String {
+    let mut parts: Vec<String> = Vec::new();
+
+    // Get full name
+    if let Some(basic) = work_data.get("DadosBasicos") {
+        if let Some(nome) = basic.get("nome").and_then(|v| v.as_str()) {
+            parts.push(nome.to_string());
+        }
     }
 
-    if enrichment.is_empty() {
-        Err(AppError::InternalError(
-            "No enrichment data available".to_string(),
-        ))
+    // Get income range (simplified)
+    if let Some(econ) = work_data.get("DadosEconomicos") {
+        if let Some(poder_aq) = econ.get("poderAquisitivo") {
+            if let Some(desc) = poder_aq
+                .get("poderAquisitivoDescricao")
+                .and_then(|v| v.as_str())
+            {
+                // Simplify: "CLASSE B1 - MEDIA ALTA" -> "Classe B1"
+                let class = desc.split(" - ").next().unwrap_or(desc);
+                parts.push(format!("💰 {}", class));
+            }
+        }
+    }
+
+    // Get primary neighborhood/city
+    if let Some(enderecos) = work_data.get("enderecos").and_then(|v| v.as_array()) {
+        if let Some(addr) = enderecos.first() {
+            let bairro = addr.get("bairro").and_then(|v| v.as_str()).unwrap_or("");
+            let cidade = addr.get("cidade").and_then(|v| v.as_str()).unwrap_or("");
+            if !bairro.is_empty() && !cidade.is_empty() {
+                parts.push(format!("📍 {}, {}", bairro, cidade));
+            } else if !cidade.is_empty() {
+                parts.push(format!("📍 {}", cidade));
+            }
+        }
+    }
+
+    parts.join(" - ")
+}
+
+/// Mask CPF for display: 12345678901 -> 123.***.**9-01
+fn mask_cpf(cpf: &str) -> String {
+    if cpf.len() == 11 {
+        format!("{}.***.***-{}", &cpf[0..3], &cpf[9..11])
     } else {
-        Ok(enrichment)
+        cpf.to_string()
     }
 }
 

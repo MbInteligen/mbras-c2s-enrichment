@@ -410,7 +410,7 @@ pub async fn c2s_enrich_lead(
 
     // Use enrichment module function which includes DBase fallback
     let cpf_result =
-        crate::enrichment::find_cpf_via_diretrix(phone_opt, email_opt, &state.config).await?;
+        crate::enrichment::find_cpf_via_diretrix(phone_opt, email_opt, &state.config, Some(&customer.name)).await?;
 
     let cpf_list = cpf_result.cpfs;
     let same_person = cpf_result.same_person;
@@ -826,7 +826,7 @@ pub async fn trigger_lead_processing(
 
     // Use enrichment module function which includes DBase fallback
     let cpf_result =
-        match crate::enrichment::find_cpf_via_diretrix(phone_opt, email_opt, &state.config).await {
+        match crate::enrichment::find_cpf_via_diretrix(phone_opt, email_opt, &state.config, Some(&customer.name)).await {
             Ok(result) => result,
             Err(_) => {
                 tracing::error!("Could not find CPF from either phone or email");

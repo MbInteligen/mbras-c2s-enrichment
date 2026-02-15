@@ -12,6 +12,7 @@ use crate::errors::{AppError, ResultExt};
 use crate::gateway_client::C2sGatewayClient;
 use crate::handlers::AppState;
 use crate::models::WorkApiCompleteResponse;
+use crate::discovery::CpfDiscoveryService;
 use crate::services::{C2SService, DBaseService, DiretrixService, MimirService, WorkApiService};
 use phonenumber::country::Id as CountryId;
 use phonenumber::Mode;
@@ -226,13 +227,38 @@ pub fn validate_br_phone(raw: &str) -> (bool, String) {
     }
 }
 
-/// Find CPF(s) from phone and/or email using Diretrix API with DBase fallback
+/// Find CPF(s) from phone and/or email using 5-tier discovery fallback.
+///
+/// Tier order: Work API phone (1) -> Work API name (2) -> DBase (3) -> Mimir (4) -> Diretrix (5, disabled)
 pub async fn find_cpf_via_diretrix(
     phone: Option<&str>,
     email: Option<&str>,
     config: &Config,
+    lead_name: Option<&str>,
 ) -> Result<CpfLookupResult, AppError> {
-    let _diretrix_service = DiretrixService::new(config); // Only for Step 3 (disabled)
+    // --- Tier 1-2: Work API discovery (phone + name + mail) ---
+    let discovery = CpfDiscoveryService::new(config);
+    match discovery.find_cpf(phone, email, lead_name).await {
+        Ok(Some(result)) => {
+            tracing::info!(
+                "CPF Discovery found CPF {} via {} (name_match: {}, score: {:.2})",
+                result.cpf, result.source, result.name_matches, result.match_score
+            );
+            return Ok(CpfLookupResult {
+                cpfs: vec![result.cpf],
+                same_person: true,
+            });
+        }
+        Ok(None) => {
+            tracing::info!("Work API discovery returned no results, falling back to DBase/Mimir");
+        }
+        Err(e) => {
+            tracing::warn!("Work API discovery failed: {}, falling back to DBase/Mimir", e);
+        }
+    }
+
+    // --- Tier 3-5: Legacy fallback (DBase -> Mimir -> Diretrix) ---
+    let _diretrix_service = DiretrixService::new(config); // Only for Tier 5 (disabled)
     let dbase_service = DBaseService::new(config);
     let mimir_service = MimirService::new(config);
 
@@ -273,7 +299,7 @@ pub async fn find_cpf_via_diretrix(
         None
     };
 
-    // 3-Tier Fallback for Phone Lookup: DBase (1st) → Mimir (2nd) → Diretrix (3rd)
+    // Tier 3-5 Fallback for Phone Lookup: DBase (3rd) → Mimir (2nd) → Diretrix (3rd)
     let mut phone_lookup: Option<Vec<crate::services::DiretrixPersonSearch>> = None;
 
     if let Some(ref phone_number) = validated_phone {
@@ -607,7 +633,7 @@ pub async fn enrich_and_send_workflow(
 
     // Step 1: Find CPF(s) via Diretrix
     tracing::info!("Step 1: Finding CPF via Diretrix");
-    let cpf_result = find_cpf_via_diretrix(phone, email, config).await?;
+    let cpf_result = find_cpf_via_diretrix(phone, email, config, Some(customer_name)).await?;
 
     tracing::info!(
         "Found {} CPF(s), same_person: {}",
