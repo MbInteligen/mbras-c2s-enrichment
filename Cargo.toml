@@ -40,6 +40,7 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Regex
 regex = "1"
+unicode-normalization = "0.1"
 
 # Caching
 moka = { version = "0.12", features = ["future"] }

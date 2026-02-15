@@ -1,0 +1,343 @@
+{
+  "feature": "phase1-cpf-discovery",
+  "version": 1,
+  "groups": {
+    "cpf_mod11": {
+      "description": "CPF mod-11 validation and normalization",
+      "cases": [
+        {
+          "id": "valid-known",
+          "input": {
+            "cpf": "52998224725"
+          },
+          "expected": {
+            "valid": true
+          }
+        },
+        {
+          "id": "valid-leading-zero",
+          "input": {
+            "cpf": "01234567890"
+          },
+          "expected": {
+            "valid": true
+          },
+          "notes": "01234567890 is actually valid mod-11"
+        },
+        {
+          "id": "valid-real-leading-zero",
+          "input": {
+            "cpf": "00000000191"
+          },
+          "expected": {
+            "valid": true
+          },
+          "notes": "Smallest valid CPF starting with 00"
+        },
+        {
+          "id": "normalize-14-digit",
+          "input": {
+            "cpf": "00052998224725"
+          },
+          "expected": {
+            "normalized": "52998224725",
+            "valid": true
+          },
+          "notes": "Work API 14-digit format → last 11 chars"
+        },
+        {
+          "id": "invalid-all-same",
+          "input": {
+            "cpf": "11111111111"
+          },
+          "expected": {
+            "valid": false
+          },
+          "notes": "All same digits rejected before mod-11"
+        },
+        {
+          "id": "invalid-check-digit",
+          "input": {
+            "cpf": "12345678900"
+          },
+          "expected": {
+            "valid": false
+          },
+          "notes": "Valid format but wrong check digits"
+        },
+        {
+          "id": "invalid-cnpj-length",
+          "input": {
+            "cpf": "12345678000190"
+          },
+          "expected": {
+            "valid": false
+          },
+          "notes": "14 digits = CNPJ, not CPF. Must reject."
+        },
+        {
+          "id": "valid-with-formatting",
+          "input": {
+            "cpf": "529.982.247-25"
+          },
+          "expected": {
+            "normalized": "52998224725",
+            "valid": true
+          },
+          "notes": "Strip dots and dash before validation"
+        }
+      ]
+    },
+    "name_matching": {
+      "description": "Name matching strategies and scoring",
+      "cases": [
+        {
+          "id": "exact-match",
+          "input": {
+            "leadName": "João Silva",
+            "dbName": "João Silva"
+          },
+          "expected": {
+            "matches": true,
+            "score": 1.0,
+            "method": "exact"
+          }
+        },
+        {
+          "id": "exact-after-normalize",
+          "input": {
+            "leadName": "josé maria",
+            "dbName": "JOSÉ MARIA"
+          },
+          "expected": {
+            "matches": true,
+            "score": 1.0,
+            "method": "exact"
+          },
+          "notes": "Case + accent normalization makes them equal"
+        },
+        {
+          "id": "fuzzy-full-high",
+          "input": {
+            "leadName": "Ronald Soares",
+            "dbName": "Ronaldo Soares"
+          },
+          "expected": {
+            "matches": true,
+            "score_min": 0.85,
+            "method": "fuzzy-full"
+          }
+        },
+        {
+          "id": "first-exact-last-fuzzy",
+          "input": {
+            "leadName": "Maria Silveira",
+            "dbName": "Maria da Silva"
+          },
+          "expected": {
+            "matches": true,
+            "score_min": 0.7,
+            "method_oneof": [
+              "first-exact-last-fuzzy",
+              "fuzzy-full"
+            ]
+          }
+        },
+        {
+          "id": "last-exact-first-fuzzy",
+          "input": {
+            "leadName": "Joao Santos",
+            "dbName": "Jose Santos"
+          },
+          "expected": {
+            "matches": true,
+            "score_min": 0.7,
+            "method_oneof": [
+              "last-exact-first-fuzzy",
+              "fuzzy-full"
+            ]
+          }
+        },
+        {
+          "id": "contains-short-in-long",
+          "input": {
+            "leadName": "Ana",
+            "dbName": "Ana Carolina Borges Mendes"
+          },
+          "expected": {
+            "matches": true,
+            "method": "first-name-only",
+            "score": 0.85
+          },
+          "notes": "First name exact match, lead has single word -> first-name-only (0.85)"
+        },
+        {
+          "id": "abbreviation-match",
+          "input": {
+            "leadName": "Maria S",
+            "dbName": "Maria Silva"
+          },
+          "expected": {
+            "matches": true,
+            "method": "contains",
+            "score_min": 0.85
+          },
+          "notes": "TS matches via contains (0.89), not abbreviation-match"
+        },
+        {
+          "id": "abbreviation-expansion",
+          "input": {
+            "leadName": "Ma. Silva",
+            "dbName": "Maria Silva"
+          },
+          "expected": {
+            "matches": true,
+            "score": 1.0,
+            "method": "exact"
+          },
+          "notes": "MA. expands to MARIA before comparison"
+        },
+        {
+          "id": "initials-match",
+          "input": {
+            "leadName": "JP",
+            "dbName": "Joao Paulo Mendes"
+          },
+          "expected": {
+            "matches": true,
+            "score": 0.85,
+            "method": "initials-match"
+          }
+        },
+        {
+          "id": "no-match-different-people",
+          "input": {
+            "leadName": "Carlos Ferreira",
+            "dbName": "Ana Borges Mendes"
+          },
+          "expected": {
+            "matches": false,
+            "score_max": 0.5
+          }
+        },
+        {
+          "id": "suffix-removal",
+          "input": {
+            "leadName": "Antonio Junior",
+            "dbName": "Antonio Santos"
+          },
+          "expected": {
+            "matches": true,
+            "method_oneof": [
+              "first-name-only"
+            ],
+            "score": 0.85
+          },
+          "notes": "JUNIOR stripped -> ANTONIO, matches first-name-only (0.85)"
+        }
+      ]
+    },
+    "income_multiplier": {
+      "description": "Income multiplier transformation (raw → display)",
+      "cases": [
+        {
+          "id": "standard-income",
+          "input": {
+            "raw_income": 10000.0
+          },
+          "expected": {
+            "display_income": 19000.0,
+            "multiplier": 1.9
+          }
+        },
+        {
+          "id": "zero-income",
+          "input": {
+            "raw_income": 0.0
+          },
+          "expected": {
+            "display_income": 0.0,
+            "multiplier": 1.9
+          }
+        },
+        {
+          "id": "high-income",
+          "input": {
+            "raw_income": 52998.5
+          },
+          "expected": {
+            "display_income": 100697.15,
+            "multiplier": 1.9
+          }
+        }
+      ]
+    },
+    "retry_policy": {
+      "description": "Retry eligibility and exponential backoff",
+      "cases": [
+        {
+          "id": "first-retry-eligible",
+          "input": {
+            "status": "partial",
+            "retry_count": 0,
+            "last_retry_at": null
+          },
+          "expected": {
+            "eligible": true,
+            "delay_hours": 1
+          }
+        },
+        {
+          "id": "third-retry-backoff",
+          "input": {
+            "status": "unenriched",
+            "retry_count": 2,
+            "last_retry_at": "2026-01-01T00:00:00Z",
+            "now": "2026-01-01T05:00:00Z"
+          },
+          "expected": {
+            "eligible": true,
+            "delay_hours": 4
+          }
+        },
+        {
+          "id": "max-retries-exceeded",
+          "input": {
+            "status": "partial",
+            "retry_count": 5,
+            "last_retry_at": "2026-01-01T00:00:00Z"
+          },
+          "expected": {
+            "eligible": false,
+            "reason": "max_retries_exceeded"
+          }
+        },
+        {
+          "id": "completed-not-retryable",
+          "input": {
+            "status": "completed",
+            "retry_count": 0,
+            "last_retry_at": null
+          },
+          "expected": {
+            "eligible": false,
+            "reason": "status_not_retryable"
+          }
+        },
+        {
+          "id": "basic-is-retryable",
+          "input": {
+            "status": "basic",
+            "retry_count": 1,
+            "last_retry_at": "2026-01-01T00:00:00Z",
+            "now": "2026-01-01T03:00:00Z"
+          },
+          "expected": {
+            "eligible": true,
+            "delay_hours": 2
+          }
+        }
+      ]
+    }
+  }
+}
