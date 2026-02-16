@@ -736,9 +736,9 @@ impl McpServer {
     async fn dispatch_tool(&self, name: &str, args: Value) -> Value {
         match name {
             // Enrichment (3)
-            "enrich_lead" => self.stub_tool(name, &args),
-            "enrich_bulk" => self.stub_tool(name, &args),
-            "retry_failed" => self.stub_tool(name, &args),
+            "enrich_lead" => self.handle_enrich_lead(&args).await,
+            "enrich_bulk" => self.handle_enrich_bulk(&args).await,
+            "retry_failed" => self.handle_retry_failed(&args).await,
 
             // Discovery (5)
             "find_and_save_person" => self.handle_find_and_save_person(&args).await,
@@ -1199,6 +1199,250 @@ impl McpServer {
         }
     }
 
+
+
+
+    // ─── Enrichment Tool Handlers (RML-1108) ────────────────────
+
+    async fn handle_enrich_lead(&self, args: &Value) -> Value {
+        let state = require_state!(self, "enrich_lead");
+        let phone = args.get("phone").and_then(|v| v.as_str());
+        let email = args.get("email").and_then(|v| v.as_str());
+        let name = args.get("name").and_then(|v| v.as_str());
+        let lead_id = args.get("lead_id").and_then(|v| v.as_str());
+
+        if phone.is_none() && email.is_none() {
+            return json!({ "success": false, "error": "At least one of phone or email is required" });
+        }
+
+        // Step 1: Discover CPF(s)
+        let cpf_result = match crate::enrichment::find_cpf_via_diretrix(
+            phone, email, &state.config, name,
+        ).await {
+            Ok(r) => r,
+            Err(e) => return json!({ "success": false, "error": format!("CPF discovery failed: {}", e) }),
+        };
+
+        if cpf_result.cpfs.is_empty() {
+            return json!({ "success": false, "error": "No CPF found via any discovery tier" });
+        }
+
+        // Step 2: Enrich with Work API
+        let enriched_data = match crate::enrichment::enrich_cpfs_with_work_api(
+            &cpf_result.cpfs, &state.config,
+        ).await {
+            Ok(d) => d,
+            Err(e) => return json!({ "success": false, "cpfs": cpf_result.cpfs, "error": format!("Work API enrichment failed: {}", e) }),
+        };
+
+        // Step 3: Format message
+        let mut message_body = crate::enrichment::format_enriched_message_body(
+            name.unwrap_or(""),
+            phone.unwrap_or(""),
+            email.unwrap_or(""),
+            &enriched_data,
+            cpf_result.same_person,
+        );
+
+        // Step 3b: Append company data from Meilisearch
+        if state.meilisearch.is_enabled() && !cpf_result.cpfs.is_empty() {
+            let summary = state.meilisearch.find_companies_by_cpf(&cpf_result.cpfs[0]).await;
+            if summary.total_companies > 0 {
+                let company_msg = MeilisearchCompanyService::format_companies_for_message(&summary);
+                if !company_msg.is_empty() {
+                    message_body.push_str(&company_msg);
+                }
+            }
+        }
+
+        // Step 4: Send to C2S (if lead_id provided)
+        let message_sent = if let Some(lid) = lead_id {
+            match state.c2s.send_message(lid, &message_body).await {
+                Ok(()) => true,
+                Err(e) => {
+                    tracing::warn!("Failed to send C2S message: {}", e);
+                    false
+                }
+            }
+        } else {
+            false
+        };
+
+        // Step 5: Store in database
+        let stored_ids = match crate::enrichment::store_enriched_data(
+            &state.db, &cpf_result.cpfs, &enriched_data, lead_id,
+        ).await {
+            Ok(ids) => ids,
+            Err(e) => {
+                tracing::warn!("Failed to store enriched data: {}", e);
+                vec![]
+            }
+        };
+
+        // Step 5b: Update c2s_leads enrichment status
+        if let Some(lid) = lead_id {
+            let status = if !cpf_result.cpfs.is_empty() && !enriched_data.is_empty() { "completed" } else { "partial" };
+            let _ = sqlx::query(
+                "UPDATE analytics.c2s_leads SET enrichment_status = $1, cpf = $2, party_id = $3, enriched_at = now(), updated_at = now() WHERE lead_id = $4"
+            )
+            .bind(status)
+            .bind(cpf_result.cpfs.first().map(|s| s.as_str()))
+            .bind(stored_ids.first())
+            .bind(lid)
+            .execute(&state.db)
+            .await;
+        }
+
+        json!({
+            "success": true,
+            "cpfs": cpf_result.cpfs,
+            "samePerson": cpf_result.same_person,
+            "enrichedCount": enriched_data.len(),
+            "messageSent": message_sent,
+            "storedCount": stored_ids.len(),
+            "entityIds": stored_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>()
+        })
+    }
+
+    async fn handle_enrich_bulk(&self, args: &Value) -> Value {
+        let state = require_state!(self, "enrich_bulk");
+        let leads = match args.get("leads").and_then(|v| v.as_array()) {
+            Some(arr) => arr,
+            None => return json!({ "success": false, "error": "leads array is required" }),
+        };
+
+        let mut results = Vec::new();
+        let mut success_count = 0u32;
+        let mut fail_count = 0u32;
+
+        for lead in leads.iter().take(50) { // Cap at 50 to prevent abuse
+            let phone = lead.get("phone").and_then(|v| v.as_str());
+            let email = lead.get("email").and_then(|v| v.as_str());
+            let name = lead.get("name").and_then(|v| v.as_str());
+            let lead_id = lead.get("lead_id").and_then(|v| v.as_str());
+
+            if phone.is_none() && email.is_none() {
+                fail_count += 1;
+                results.push(json!({ "lead_id": lead_id, "success": false, "error": "no phone or email" }));
+                continue;
+            }
+
+            // Discovery
+            match state.discovery.find_cpf_by_phone(
+                phone.unwrap_or(""), name,
+            ).await {
+                Ok(Some(cpf_result)) => {
+                    // Enrich
+                    match state.work_api.fetch_all_modules(&cpf_result.cpf).await {
+                        Ok(work_data) => {
+                            // Store
+                            let party_id = state.storage.store_enriched_person(&cpf_result.cpf, &work_data).await.ok();
+                            success_count += 1;
+                            results.push(json!({
+                                "lead_id": lead_id,
+                                "success": true,
+                                "cpf": cpf_result.cpf,
+                                "partyId": party_id.map(|id| id.to_string())
+                            }));
+                        }
+                        Err(e) => {
+                            fail_count += 1;
+                            results.push(json!({ "lead_id": lead_id, "success": false, "cpf": cpf_result.cpf, "error": e.to_string() }));
+                        }
+                    }
+                }
+                Ok(None) => {
+                    fail_count += 1;
+                    results.push(json!({ "lead_id": lead_id, "success": false, "error": "CPF not found" }));
+                }
+                Err(e) => {
+                    fail_count += 1;
+                    results.push(json!({ "lead_id": lead_id, "success": false, "error": e.to_string() }));
+                }
+            }
+
+            // Rate limit between leads
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+
+        json!({
+            "success": true,
+            "total": leads.len(),
+            "processed": results.len(),
+            "succeeded": success_count,
+            "failed": fail_count,
+            "results": results
+        })
+    }
+
+    async fn handle_retry_failed(&self, args: &Value) -> Value {
+        let state = require_state!(self, "retry_failed");
+        let statuses: Vec<&str> = args.get("statuses")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+            .unwrap_or_else(|| vec!["failed", "partial", "unenriched"]);
+        let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20) as i64;
+
+        // Find leads by status
+        let rows = match sqlx::query(
+            "SELECT lead_id, customer_name, customer_phone, customer_email, enrichment_status, retry_count              FROM analytics.c2s_leads              WHERE enrichment_status = ANY($1) AND (retry_count < 3 OR retry_count IS NULL)              ORDER BY received_at DESC LIMIT $2"
+        )
+        .bind(&statuses.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        .bind(limit)
+        .fetch_all(&state.db)
+        .await {
+            Ok(rows) => rows,
+            Err(e) => return json!({ "success": false, "error": format!("DB query failed: {}", e) }),
+        };
+
+        let total = rows.len();
+        let mut retried = 0u32;
+        let mut succeeded = 0u32;
+
+        for row in &rows {
+            use sqlx::Row;
+            let lead_id: String = row.try_get("lead_id").unwrap_or_default();
+            let phone: Option<String> = row.try_get("customer_phone").ok();
+            let name: Option<String> = row.try_get("customer_name").ok();
+
+            if let Some(ref p) = phone {
+                match state.discovery.find_cpf_by_phone(p, name.as_deref()).await {
+                    Ok(Some(cpf_result)) => {
+                        if let Ok(work_data) = state.work_api.fetch_all_modules(&cpf_result.cpf).await {
+                            let party_id = state.storage.store_enriched_person(&cpf_result.cpf, &work_data).await.ok();
+                            let _ = sqlx::query(
+                                "UPDATE analytics.c2s_leads SET enrichment_status = 'completed', cpf = $1, party_id = $2, enriched_at = now(), retry_count = COALESCE(retry_count, 0) + 1, updated_at = now() WHERE lead_id = $3"
+                            )
+                            .bind(&cpf_result.cpf)
+                            .bind(party_id)
+                            .bind(&lead_id)
+                            .execute(&state.db)
+                            .await;
+                            succeeded += 1;
+                        }
+                    }
+                    _ => {
+                        let _ = sqlx::query(
+                            "UPDATE analytics.c2s_leads SET retry_count = COALESCE(retry_count, 0) + 1, last_retry_at = now(), updated_at = now() WHERE lead_id = $1"
+                        )
+                        .bind(&lead_id)
+                        .execute(&state.db)
+                        .await;
+                    }
+                }
+            }
+            retried += 1;
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+
+        json!({
+            "success": true,
+            "total": total,
+            "retried": retried,
+            "succeeded": succeeded,
+            "statuses": statuses
+        })
+    }
 
 
     // ─── Web Search Tool Handlers (RML-1112) ────────────────────
