@@ -310,22 +310,22 @@
 
 **Priority:** LOW — AI assistant integration (depends on Rust MCP SDK maturity)
 
-- [ ] MCP server entry point (stdio transport)
-- [ ] Enrichment tools (3): enrich_lead, enrich_bulk, retry_failed
-- [ ] Discovery tools (5): find_and_save_person, discover_cpf, lookup_cpf, search_cpf_by_name, validate_cpf
-- [ ] Lead tools (3): get_lead, list_leads, get_c2s_lead_status
-- [ ] Stats tools (4): get_enrichment_stats, get_service_health, get_enrichment_rate, get_enrichment_health
-- [ ] Property tools (3): get_properties_by_cpf, get_property_summary, format_property_message
-- [ ] Report tools (3): generate_profile_report, generate_report_from_cpfs, generate_report_pdf
-- [ ] Analysis tools (6): analyze_lead, get_lead_analysis, check_lead_alert, score_lead_quality, assess_risk, quick_risk_check
-- [ ] C2S tools (9): fetch_c2s_leads, get_c2s_sellers, send_c2s_message, forward_c2s_lead, search_c2s_by_phone, search_c2s_by_email, mark_c2s_interacted, get_c2s_tags, add_c2s_lead_tag
-- [ ] Domain tools (3): analyze_email_domain, get_domain_trust_score, identify_company_from_email
-- [ ] Company tools (7): lookup_cnpj, find_companies_by_name, analyze_company_portfolio, find_companies_by_cpf, get_company_by_cnpj, search_companies, format_companies_message
-- [ ] Tier tools (2): calculate_lead_tier, get_tier_recommendation
-- [ ] Search tools (5): search_web, search_person, search_news, generate_web_insights, analyze_lead_name
-- [ ] Twenty tools (13): all CRUD + analytics + workflow tools
-- [ ] MCP resources (3): enrichment://stats, enrichment://health, enrichment://recent
-- [ ] **Total: 66 tools + 3 resources**
+- [x] MCP server entry point (stdio transport)
+- [x] Enrichment tools (3): enrich_lead, enrich_bulk, retry_failed
+- [x] Discovery tools (5): find_and_save_person, discover_cpf, lookup_cpf, search_cpf_by_name, validate_cpf
+- [x] Lead tools (3): get_lead, list_leads, get_c2s_lead_status
+- [x] Stats tools (4): get_enrichment_stats, get_service_health, get_enrichment_rate, get_enrichment_health
+- [x] Property tools (3): get_properties_by_cpf, get_property_summary, format_property_message
+- [x] Report tools (3): generate_profile_report, generate_report_from_cpfs, generate_report_pdf
+- [x] Analysis tools (6): analyze_lead, get_lead_analysis, check_lead_alert, score_lead_quality, assess_risk, quick_risk_check
+- [x] C2S tools (9): fetch_c2s_leads, get_c2s_sellers, send_c2s_message, forward_c2s_lead, search_c2s_by_phone, search_c2s_by_email, mark_c2s_interacted, get_c2s_tags, add_c2s_lead_tag
+- [x] Domain tools (3): analyze_email_domain, get_domain_trust_score, identify_company_from_email
+- [x] Company tools (7): lookup_cnpj, find_companies_by_name, analyze_company_portfolio, find_companies_by_cpf, get_company_by_cnpj, search_companies, format_companies_message
+- [x] Tier tools (2): calculate_lead_tier, get_tier_recommendation
+- [x] Search tools (5): search_web, search_person, search_news, generate_web_insights, analyze_lead_name
+- [x] Twenty tools (13): all CRUD + analytics + workflow tools
+- [x] MCP resources (3): enrichment://stats, enrichment://health, enrichment://recent
+- [x] **Total: 66 tools + 3 resources**
 
 **Acceptance criteria:**
 - MCP server runs via stdio
