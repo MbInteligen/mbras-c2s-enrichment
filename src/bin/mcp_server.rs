@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
 
     let state = McpAppState::new(&config, db.pool.clone());
     let server = McpServer::with_state(config, state);
-    tracing::info!("MCP server wired with DB + services (10 live tools, 42 stubs)");
+    tracing::info!("MCP server wired with DB + services (65 functional, 1 stub)");
 
     let service = server.serve(stdio()).await.inspect_err(|e| {
         tracing::error!("MCP server error: {:?}", e);
