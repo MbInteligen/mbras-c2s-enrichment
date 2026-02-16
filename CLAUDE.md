@@ -1768,3 +1768,88 @@ Endpoint: `GET /metrics`
 - **Score clamping**: Rust adds `score.min(100)` (TS trusts bucket math)
 - **CompanyCount**: `Option<u32>` prevents negative values TS allows
 - **Exhaustive enums**: `Grade`, `Category`, `ScoreMethod`, `TierLevel` — no string unions
+
+---
+
+## MCP Server — 66 Tools (February 16, 2026)
+
+### Overview
+
+MCP (Model Context Protocol) server exposes lead enrichment capabilities to AI assistants via stdio transport. Uses `rmcp` crate with `McpAppState` composition root (separate from Axum's `AppState`).
+
+**Binary:** `cargo run --bin mcp_server`
+**Entry:** `src/bin/mcp_server.rs`
+**Core:** `src/mcp.rs` (~2200 lines)
+
+### Architecture
+
+```
+McpAppState (composition root)
+├── db: PgPool
+├── config: Arc<Config>
+├── discovery: CpfDiscoveryService
+├── storage: EnrichmentStorage
+├── work_api: WorkApiService
+├── c2s: C2SService
+├── c2s_extended: Arc<C2sExtendedService>
+├── meilisearch: Arc<MeilisearchCompanyService>
+├── fly_scale: Arc<FlyScaleService>
+├── ibvi_property: Arc<IbviPropertyService>
+├── twenty: Arc<TwentyService>
+├── web_search: Arc<WebSearchService>
+├── lead_analysis: Arc<LeadAnalysisService>
+└── report: ProfileReportService
+```
+
+**Two modes:**
+- `McpServer::new(config)` — stub mode (pure-logic tools only, for tests)
+- `McpServer::with_state(config, state)` — fully wired (DB + all services)
+
+### Tool Status (66 total)
+
+| Status | Count | Examples |
+|--------|-------|---------|
+| **Wired** | 51 | DB reads, discovery, enrichment, C2S CRM, companies, property, search, Twenty, analysis, reports |
+| **Pure-logic** | 14 | validate_cpf, score_lead_quality, assess_risk, tier, domain, Twenty workflow |
+| **Stub** | 1 | mark_c2s_interacted (no C2S API method exists) |
+
+### Tool Categories
+
+| Category | Wired | Pure-Logic | Stub |
+|----------|-------|------------|------|
+| Enrichment | 3 | 0 | 0 |
+| Discovery | 4 | 1 | 0 |
+| DB Reads | 5 | 0 | 0 |
+| C2S CRM | 9 | 0 | 1 |
+| Companies | 7 | 0 | 0 |
+| Property | 3 | 0 | 0 |
+| Search/Web | 4 | 0 | 0 |
+| Analysis | 3 | 3 | 0 |
+| Reports | 3 | 0 | 0 |
+| Twenty CRM | 10 | 10 | 0 |
+| Health/Stats | 4 | 0 | 0 |
+
+### Key Implementation Pattern
+
+```rust
+macro_rules! require_state {
+    ($self:expr, $tool_name:expr) => {
+        match &$self.state {
+            Some(s) => s,
+            None => return $self.stub_tool($tool_name, &Value::Null),
+        }
+    };
+}
+```
+
+### Linear Issues (all Done)
+
+- RML-1105: McpAppState composition root
+- RML-1106: 5 DB read tools
+- RML-1107: 4 CPF discovery tools
+- RML-1108: 3 enrichment tools
+- RML-1109: 9 C2S CRM tools
+- RML-1110: 7 company/Meilisearch tools
+- RML-1111: 3 property tools
+- RML-1112: 4 search/web tools
+- RML-1113: 10 Twenty + 3 analysis + 2 report tools
