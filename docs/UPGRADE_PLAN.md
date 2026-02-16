@@ -257,11 +257,11 @@
 
 **Priority:** MEDIUM — Output for stakeholders
 
-- [ ] Profile report service (Markdown + HTML via `askama` templates)
-- [ ] PDF generation (headless Chrome `--print-to-pdf`)
-- [ ] Report from CPFs pipeline (lookup then enrich then report)
-- [ ] Seller ranking reports (leads by seller, tier distribution)
-- [ ] Lead quality reports (HTML with Tailwind CSS, MBRAS branding)
+- [x] Profile report service (Markdown + HTML via `askama` templates)
+- [x] PDF generation (headless Chrome `--print-to-pdf`)
+- [x] Report from CPFs pipeline (lookup then enrich then report)
+- [x] Seller ranking reports (leads by seller, tier distribution)
+- [x] Lead quality reports (HTML with Tailwind CSS, MBRAS branding)
 
 **Acceptance criteria:**
 - Report generation endpoint returns HTML report
@@ -274,11 +274,11 @@
 
 **Priority:** LOW — Nice to have
 
-- [ ] Work API photo extraction (base64 from `foto` field)
-- [ ] Cloudflare R2 upload service (`aws-sdk-s3` crate, S3 compatible)
-- [ ] Signed URL generation (7-day expiry)
-- [ ] Photo URL persistence (`parties.photo_url`)
-- [ ] Fire-and-forget upload (non-blocking, never blocks enrichment)
+- [x] Work API photo extraction (base64 from `foto` field)
+- [x] Cloudflare R2 upload service (`aws-sdk-s3` crate, S3 compatible)
+- [x] Signed URL generation (7-day expiry)
+- [x] Photo URL persistence (`parties.photo_url`)
+- [x] Fire-and-forget upload (non-blocking, never blocks enrichment)
 
 **Acceptance criteria:**
 - Photos uploaded to R2, URL stored on party
@@ -291,11 +291,11 @@
 
 **Priority:** LOW — Cost optimization
 
-- [ ] Fly.io auto-scale service (generic multi-machine profiles via Machines API)
-- [ ] CPF Lookup auto-scaling (256MB to 16GB, 5min idle timeout)
-- [ ] Meilisearch auto-scaling profile ownership (2GB to 16GB, 10min idle)
-- [ ] Scale-down timer per profile (cancel on new request, fire after idle period)
-- [ ] Cross-org token support (per-machine Fly.io tokens for scaling across orgs)
+- [x] Fly.io auto-scale service (generic multi-machine profiles via Machines API)
+- [x] CPF Lookup auto-scaling (256MB to 16GB, 5min idle timeout)
+- [x] Meilisearch auto-scaling profile ownership (2GB to 16GB, 10min idle)
+- [x] Scale-down timer per profile (cancel on new request, fire after idle period)
+- [x] Cross-org token support (per-machine Fly.io tokens for scaling across orgs)
 
 > **Note:** Meilisearch auto-scaling is **implemented** in Phase 2 (calling `fly_scale.scale_up("meilisearch")`) but **profile definition and maintenance** lives in Phase 11. This avoids duplication while keeping Phase 2 focused on company intelligence.
 
