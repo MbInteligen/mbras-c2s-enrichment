@@ -43,3 +43,4 @@ pub mod c2s_extended;
 pub mod twenty;
 pub mod report;
 pub mod photo_storage;
+pub mod mcp;

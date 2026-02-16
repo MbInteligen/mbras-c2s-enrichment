@@ -37,6 +37,7 @@ mod c2s_extended;
 mod twenty;
 mod report;
 mod photo_storage;
+mod mcp;
 
 use axum::{
     extract::{Path, State},
