@@ -9,8 +9,58 @@ use rmcp::{
 };
 use serde_json::{json, Value};
 use std::sync::Arc;
+use sqlx::PgPool;
 
 use crate::config::Config;
+use crate::db_storage::EnrichmentStorage;
+use crate::discovery::CpfDiscoveryService;
+use crate::services::{WorkApiService, C2SService};
+use crate::meilisearch::MeilisearchCompanyService;
+use crate::fly_scale::FlyScaleService;
+
+// ─── MCP Application State (composition root for MCP binary) ────────
+
+/// Lean state for the MCP stdio binary. Separate from `handlers::AppState`
+/// which holds Moka caches, sessions, and gateway client for the Axum HTTP server.
+pub struct McpAppState {
+    pub db: PgPool,
+    pub config: Arc<Config>,
+    pub discovery: CpfDiscoveryService,
+    pub storage: EnrichmentStorage,
+    pub work_api: WorkApiService,
+    pub c2s: C2SService,
+    pub meilisearch: Arc<MeilisearchCompanyService>,
+    pub fly_scale: Arc<FlyScaleService>,
+}
+
+impl McpAppState {
+    /// Single composition root — all services initialized here.
+    pub fn new(config: &Config, db: PgPool) -> Self {
+        Self {
+            db: db.clone(),
+            config: Arc::new(config.clone()),
+            discovery: CpfDiscoveryService::new(config),
+            storage: EnrichmentStorage::new(db.clone()),
+            work_api: WorkApiService::new(config),
+            c2s: C2SService::new(config),
+            meilisearch: Arc::new(MeilisearchCompanyService::new(
+                &config.meilisearch_url,
+                &config.meilisearch_key,
+            )),
+            fly_scale: Arc::new(FlyScaleService::new(config)),
+        }
+    }
+}
+
+/// Helper macro: extract `&McpAppState` from `self.state`, or return stub with tool name.
+macro_rules! require_state {
+    ($self:expr, $tool_name:expr) => {
+        match &$self.state {
+            Some(s) => s,
+            None => return $self.stub_tool($tool_name, &Value::Null),
+        }
+    };
+}
 
 // ─── Tool Input Schemas ─────────────────────────────────────────────
 
@@ -516,15 +566,28 @@ pub struct TwentyBrokerStatsInput {
 /// MCP Server for C2S Lead Enrichment API
 ///
 /// Exposes 66 tools and 3 resources for AI assistant integration.
+/// `state: None` = stub mode (pure-logic tools only, for tests).
+/// `state: Some(...)` = fully wired (DB + services).
 #[derive(Clone)]
 pub struct McpServer {
     config: Arc<Config>,
+    state: Option<Arc<McpAppState>>,
 }
 
 impl McpServer {
+    /// Stub mode — no DB, no services. Pure-logic tools only.
     pub fn new(config: Config) -> Self {
         Self {
             config: Arc::new(config),
+            state: None,
+        }
+    }
+
+    /// Fully wired mode — DB + all services available.
+    pub fn with_state(config: Config, state: McpAppState) -> Self {
+        Self {
+            config: Arc::new(config),
+            state: Some(Arc::new(state)),
         }
     }
 
@@ -650,22 +713,22 @@ impl McpServer {
             "retry_failed" => self.stub_tool(name, &args),
 
             // Discovery (5)
-            "find_and_save_person" => self.stub_tool(name, &args),
+            "find_and_save_person" => self.handle_find_and_save_person(&args).await,
             "discover_cpf" => self.handle_discover_cpf(&args).await,
-            "lookup_cpf" => self.stub_tool(name, &args),
-            "search_cpf_by_name" => self.stub_tool(name, &args),
+            "lookup_cpf" => self.handle_lookup_cpf(&args).await,
+            "search_cpf_by_name" => self.handle_search_cpf_by_name(&args).await,
             "validate_cpf" => self.handle_validate_cpf(&args),
 
             // Leads (3)
-            "get_lead" => self.stub_tool(name, &args),
-            "list_leads" => self.stub_tool(name, &args),
+            "get_lead" => self.handle_get_lead(&args).await,
+            "list_leads" => self.handle_list_leads(&args).await,
             "get_c2s_lead_status" => self.stub_tool(name, &args),
 
             // Stats (4)
-            "get_enrichment_stats" => self.stub_tool(name, &args),
-            "get_service_health" => self.handle_service_health(),
-            "get_enrichment_rate" => self.stub_tool(name, &args),
-            "get_enrichment_health" => self.stub_tool(name, &args),
+            "get_enrichment_stats" => self.handle_enrichment_stats(&args).await,
+            "get_service_health" => self.handle_service_health().await,
+            "get_enrichment_rate" => self.handle_enrichment_rate(&args).await,
+            "get_enrichment_health" => self.handle_enrichment_health(&args).await,
 
             // Property (3)
             "get_properties_by_cpf" => self.stub_tool(name, &args),
@@ -750,6 +813,213 @@ impl McpServer {
         })
     }
 
+    // ─── DB read tool handlers (RML-1106) ──────────────────────────
+
+    async fn handle_get_lead(&self, args: &Value) -> Value {
+        let state = require_state!(self, "get_lead");
+        let lead_id = args.get("lead_id").and_then(|v| v.as_str());
+        let phone = args.get("phone").and_then(|v| v.as_str());
+
+        if lead_id.is_none() && phone.is_none() {
+            return json!({ "success": false, "error": "lead_id or phone required" });
+        }
+
+        let row = sqlx::query_as::<_, (
+            String,                          // lead_id
+            Option<String>,                  // customer_name
+            Option<String>,                  // customer_phone
+            Option<String>,                  // customer_email
+            Option<String>,                  // enrichment_status
+            Option<String>,                  // cpf
+            Option<uuid::Uuid>,              // party_id
+            Option<chrono::NaiveDateTime>,   // received_at
+        )>(
+            r#"SELECT lead_id, customer_name, customer_phone, customer_email,
+                      enrichment_status, cpf, party_id, received_at
+               FROM analytics.c2s_leads
+               WHERE ($1::text IS NOT NULL AND lead_id = $1)
+                  OR ($2::text IS NOT NULL AND customer_phone_normalized = $2)
+               LIMIT 1"#,
+        )
+        .bind(lead_id)
+        .bind(phone)
+        .fetch_optional(&state.db)
+        .await;
+
+        match row {
+            Ok(Some((lid, name, ph, email, status, cpf, party_id, received))) => json!({
+                "success": true,
+                "lead": {
+                    "lead_id": lid,
+                    "customer_name": name,
+                    "customer_phone": ph,
+                    "customer_email": email,
+                    "enrichment_status": status,
+                    "cpf": cpf,
+                    "party_id": party_id.map(|u| u.to_string()),
+                    "received_at": received.map(|d| d.to_string()),
+                }
+            }),
+            Ok(None) => json!({ "success": true, "lead": null, "message": "Lead not found" }),
+            Err(e) => json!({ "success": false, "error": format!("DB query failed: {}", e) }),
+        }
+    }
+
+    async fn handle_list_leads(&self, args: &Value) -> Value {
+        let state = require_state!(self, "list_leads");
+        let status = args.get("status").and_then(|v| v.as_str());
+        let seller_id = args.get("seller_id").and_then(|v| v.as_str());
+        let date_from = args.get("date_from").and_then(|v| v.as_str());
+        let date_to = args.get("date_to").and_then(|v| v.as_str());
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20).min(100) as i64;
+        let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as i64;
+
+        let rows = sqlx::query_as::<_, (
+            String, Option<String>, Option<String>, Option<String>,
+            Option<String>, Option<String>, Option<chrono::NaiveDateTime>,
+        )>(
+            r#"SELECT lead_id, customer_name, customer_phone, customer_email,
+                      enrichment_status, cpf, received_at
+               FROM analytics.c2s_leads
+               WHERE ($1::text IS NULL OR enrichment_status = $1)
+                 AND ($2::timestamptz IS NULL OR received_at >= $2::timestamptz)
+                 AND ($3::timestamptz IS NULL OR received_at <= $3::timestamptz)
+               ORDER BY received_at DESC
+               LIMIT $4 OFFSET $5"#,
+        )
+        .bind(status)
+        .bind(date_from)
+        .bind(date_to)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&state.db)
+        .await;
+
+        match rows {
+            Ok(rows) => {
+                let leads: Vec<Value> = rows.iter().map(|(lid, name, ph, email, st, cpf, recv)| {
+                    json!({
+                        "lead_id": lid,
+                        "customer_name": name,
+                        "customer_phone": ph,
+                        "customer_email": email,
+                        "enrichment_status": st,
+                        "cpf": cpf,
+                        "received_at": recv.map(|d| d.to_string()),
+                    })
+                }).collect();
+                let mut result = json!({ "success": true, "count": leads.len(), "leads": leads });
+                if seller_id.is_some() {
+                    result["note"] = json!("seller_id filter requires C2S API — use fetch_c2s_leads tool instead");
+                }
+                result
+            }
+            Err(e) => json!({ "success": false, "error": format!("DB query failed: {}", e) }),
+        }
+    }
+
+    async fn handle_enrichment_stats(&self, args: &Value) -> Value {
+        let state = require_state!(self, "get_enrichment_stats");
+        let date_from = args.get("date_from").and_then(|v| v.as_str());
+        let date_to = args.get("date_to").and_then(|v| v.as_str());
+
+        let row = sqlx::query_as::<_, (i64, i64, i64, i64, i64, i64)>(
+            r#"SELECT
+                 COUNT(*) as total,
+                 COUNT(*) FILTER (WHERE enrichment_status = 'completed') as completed,
+                 COUNT(*) FILTER (WHERE enrichment_status IN ('partial', 'basic')) as partial,
+                 COUNT(*) FILTER (WHERE enrichment_status IN ('unenriched', 'failed')) as failed,
+                 COUNT(*) FILTER (WHERE enrichment_status = 'pending') as pending,
+                 COUNT(*) FILTER (WHERE enrichment_status = 'processing') as processing
+               FROM analytics.c2s_leads
+               WHERE ($1::timestamptz IS NULL OR received_at >= $1::timestamptz)
+                 AND ($2::timestamptz IS NULL OR received_at <= $2::timestamptz)"#,
+        )
+        .bind(date_from)
+        .bind(date_to)
+        .fetch_one(&state.db)
+        .await;
+
+        match row {
+            Ok((total, completed, partial, failed, pending, processing)) => {
+                let rate = if total > 0 { (completed as f64 / total as f64) * 100.0 } else { 0.0 };
+                json!({
+                    "success": true,
+                    "total": total,
+                    "completed": completed,
+                    "partial": partial,
+                    "failed": failed,
+                    "pending": pending,
+                    "processing": processing,
+                    "enrichment_rate": format!("{:.1}%", rate),
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                })
+            }
+            Err(e) => json!({ "success": false, "error": format!("DB query failed: {}", e) }),
+        }
+    }
+
+    async fn handle_enrichment_rate(&self, _args: &Value) -> Value {
+        let state = require_state!(self, "get_enrichment_rate");
+
+        let row = sqlx::query_as::<_, (i64, i64)>(
+            r#"SELECT
+                 COUNT(*) as total,
+                 COUNT(*) FILTER (WHERE enrichment_status = 'completed') as completed
+               FROM analytics.c2s_leads"#,
+        )
+        .fetch_one(&state.db)
+        .await;
+
+        match row {
+            Ok((total, completed)) => {
+                let rate = if total > 0 { (completed as f64 / total as f64) * 100.0 } else { 0.0 };
+                json!({
+                    "success": true,
+                    "rate": format!("{:.1}", rate),
+                    "total": total,
+                    "completed": completed,
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                })
+            }
+            Err(e) => json!({ "success": false, "error": format!("DB query failed: {}", e) }),
+        }
+    }
+
+    async fn handle_enrichment_health(&self, args: &Value) -> Value {
+        let state = require_state!(self, "get_enrichment_health");
+        let threshold = args.get("threshold")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(80.0);
+
+        let row = sqlx::query_as::<_, (i64, i64)>(
+            r#"SELECT
+                 COUNT(*) as total,
+                 COUNT(*) FILTER (WHERE enrichment_status = 'completed') as completed
+               FROM analytics.c2s_leads"#,
+        )
+        .fetch_one(&state.db)
+        .await;
+
+        match row {
+            Ok((total, completed)) => {
+                let rate = if total > 0 { (completed as f64 / total as f64) * 100.0 } else { 0.0 };
+                let healthy = rate >= threshold;
+                json!({
+                    "success": true,
+                    "healthy": healthy,
+                    "rate": format!("{:.1}", rate),
+                    "threshold": threshold,
+                    "total": total,
+                    "completed": completed,
+                    "status": if healthy { "ok" } else { "degraded" },
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                })
+            }
+            Err(e) => json!({ "success": false, "error": format!("DB query failed: {}", e) }),
+        }
+    }
+
     // ─── Pure-logic tool handlers (no DB/HTTP needed) ───────────────
 
     fn handle_validate_cpf(&self, args: &Value) -> Value {
@@ -780,21 +1050,157 @@ impl McpServer {
         if phone.is_none() && email.is_none() && name.is_none() {
             return json!({ "success": false, "error": "At least one of phone, email, or name is required" });
         }
-        self.stub_tool("discover_cpf", args)
+        let state = require_state!(self, "discover_cpf");
+
+        // Try phone discovery first (5-tier cascade)
+        if let Some(phone) = phone {
+            match state.discovery.find_cpf_by_phone(phone, name).await {
+                Ok(Some(result)) => return json!({
+                    "success": true,
+                    "cpf": result.cpf,
+                    "source": result.source,
+                    "foundName": result.found_name,
+                    "nameMatches": result.name_matches,
+                    "matchScore": result.match_score,
+                    "matchMethod": result.match_method
+                }),
+                Ok(None) => {} // fall through to email/name
+                Err(e) => return json!({ "success": false, "error": e.to_string() }),
+            }
+        }
+
+        // Try email discovery (2-tier cascade)
+        if let Some(email) = email {
+            match state.discovery.find_cpf_by_email(email, name).await {
+                Ok(Some(result)) => return json!({
+                    "success": true,
+                    "cpf": result.cpf,
+                    "source": result.source,
+                    "foundName": result.found_name,
+                    "nameMatches": result.name_matches,
+                    "matchScore": result.match_score,
+                    "matchMethod": result.match_method
+                }),
+                Ok(None) => {}
+                Err(e) => return json!({ "success": false, "error": e.to_string() }),
+            }
+        }
+
+        // Try name-only DuckDB search as last resort
+        if let Some(name) = name {
+            match state.discovery.find_cpf_by_name_duckdb(name).await {
+                Ok(Some(result)) => return json!({
+                    "success": true,
+                    "cpf": result.cpf,
+                    "source": result.source,
+                    "foundName": result.found_name,
+                    "matchScore": result.match_score
+                }),
+                Ok(None) => {}
+                Err(e) => return json!({ "success": false, "error": e.to_string() }),
+            }
+        }
+
+        json!({ "success": false, "error": "CPF not found via any discovery tier" })
     }
 
-    fn handle_service_health(&self) -> Value {
-        json!({
-            "success": true,
-            "overall": "unknown",
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "services": {
-                "database": { "status": "unknown", "note": "MCP stdio mode — no DB pool" },
-                "workApi": { "status": "configured", "hasToken": !self.config.worker_api_key.is_empty() },
-                "c2sApi": { "status": "configured", "hasToken": !self.config.c2s_token.is_empty() }
-            },
-            "hint": "Full health check requires HTTP API mode with database connection"
-        })
+    async fn handle_lookup_cpf(&self, args: &Value) -> Value {
+        let state = require_state!(self, "lookup_cpf");
+        let cpf = match args.get("cpf").and_then(|v| v.as_str()) {
+            Some(c) if !c.is_empty() => c,
+            _ => return json!({ "success": false, "error": "cpf is required" }),
+        };
+        match state.work_api.fetch_all_modules(cpf).await {
+            Ok(data) => json!({ "success": true, "cpf": cpf, "data": data }),
+            Err(e) => json!({ "success": false, "cpf": cpf, "error": e.to_string() }),
+        }
+    }
+
+    async fn handle_search_cpf_by_name(&self, args: &Value) -> Value {
+        let state = require_state!(self, "search_cpf_by_name");
+        let name = match args.get("name").and_then(|v| v.as_str()) {
+            Some(n) if !n.is_empty() => n,
+            _ => return json!({ "success": false, "error": "name is required" }),
+        };
+        match state.discovery.find_cpf_by_name_duckdb(name).await {
+            Ok(Some(result)) => json!({
+                "success": true,
+                "found": true,
+                "cpf": result.cpf,
+                "source": result.source,
+                "foundName": result.found_name,
+                "matchScore": result.match_score
+            }),
+            Ok(None) => json!({ "success": true, "found": false, "message": "No CPF found for this name" }),
+            Err(e) => json!({ "success": false, "error": e.to_string() }),
+        }
+    }
+
+    async fn handle_find_and_save_person(&self, args: &Value) -> Value {
+        let state = require_state!(self, "find_and_save_person");
+        let phone = match args.get("phone").and_then(|v| v.as_str()) {
+            Some(p) if !p.is_empty() => p,
+            _ => return json!({ "success": false, "error": "phone is required" }),
+        };
+        let name = args.get("name").and_then(|v| v.as_str());
+
+        // Step 1: Discover CPF via phone
+        let discovery_result = match state.discovery.find_cpf_by_phone(phone, name).await {
+            Ok(Some(r)) => r,
+            Ok(None) => return json!({ "success": false, "error": "CPF not found for this phone" }),
+            Err(e) => return json!({ "success": false, "error": e.to_string() }),
+        };
+        let cpf = &discovery_result.cpf;
+
+        // Step 2: Fetch full Work API data
+        let work_data = match state.work_api.fetch_all_modules(cpf).await {
+            Ok(d) => d,
+            Err(e) => return json!({ "success": false, "cpf": cpf, "error": format!("Work API fetch failed: {}", e) }),
+        };
+
+        // Step 3: Save to core.parties via EnrichmentStorage
+        match state.storage.store_enriched_person(cpf, &work_data).await {
+            Ok(party_id) => json!({
+                "success": true,
+                "cpf": cpf,
+                "partyId": party_id.to_string(),
+                "source": discovery_result.source,
+                "foundName": discovery_result.found_name
+            }),
+            Err(e) => json!({ "success": false, "cpf": cpf, "error": format!("Storage failed: {}", e) }),
+        }
+    }
+
+    async fn handle_service_health(&self) -> Value {
+        if let Some(state) = &self.state {
+            let db_ok = sqlx::query("SELECT 1").execute(&state.db).await.is_ok();
+            json!({
+                "success": true,
+                "overall": if db_ok { "healthy" } else { "degraded" },
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "mode": "wired",
+                "services": {
+                    "database": { "status": if db_ok { "healthy" } else { "unhealthy" } },
+                    "work_api": { "status": "configured", "hasToken": !self.config.worker_api_key.is_empty() },
+                    "c2s_api": { "status": "configured", "hasToken": !self.config.c2s_token.is_empty() },
+                    "meilisearch": { "status": "configured" },
+                    "cpf_discovery": { "status": "configured" }
+                }
+            })
+        } else {
+            json!({
+                "success": true,
+                "overall": "unknown",
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "mode": "stub",
+                "services": {
+                    "database": { "status": "unknown", "note": "MCP stdio mode — no DB pool" },
+                    "work_api": { "status": "configured", "hasToken": !self.config.worker_api_key.is_empty() },
+                    "c2s_api": { "status": "configured", "hasToken": !self.config.c2s_token.is_empty() }
+                },
+                "hint": "Full health check requires McpServer::with_state()"
+            })
+        }
     }
 
     fn handle_score_quality(&self, args: &Value) -> Value {
@@ -1192,7 +1598,7 @@ impl ServerHandler for McpServer {
                 })
             }
             "enrichment://health" => {
-                let data = self.handle_service_health();
+                let data = self.handle_service_health().await;
                 Ok(ReadResourceResult {
                     contents: vec![ResourceContents::text(
                         serde_json::to_string_pretty(&data).unwrap_or_default(),
@@ -1417,10 +1823,10 @@ mod tests {
         assert_eq!(result["success"], true);
     }
 
-    #[test]
-    fn test_service_health() {
+    #[tokio::test]
+    async fn test_service_health() {
         let server = McpServer::new(test_config());
-        let result = server.handle_service_health();
+        let result = server.handle_service_health().await;
         assert_eq!(result["success"], true);
         assert!(result["services"].is_object());
     }
