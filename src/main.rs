@@ -35,6 +35,8 @@ mod risk_detector;
 mod web_search;
 mod c2s_extended;
 mod twenty;
+mod report;
+mod photo_storage;
 
 use axum::{
     extract::{Path, State},
@@ -735,6 +737,103 @@ async fn twenty_bulk_import_handler(
         Ok(result) => Ok(axum::Json(serde_json::json!({ "data": result }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
+}
+
+
+// ─── Phase 9: Report Handlers ───────────────────────────────────────────────
+
+async fn generate_markdown_report_handler(
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let persons: Vec<report::ReportPerson> = serde_json::from_value(
+        body.get("persons").cloned().unwrap_or(serde_json::json!([]))
+    ).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid persons: {}", e)))?;
+
+    let options: report::ReportOptions = serde_json::from_value(
+        body.get("options").cloned().unwrap_or(serde_json::json!({"title": "Report"}))
+    ).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid options: {}", e)))?;
+
+    let svc = report::ProfileReportService::new();
+    let result = svc.generate_markdown(&persons, &options);
+    Ok(axum::Json(serde_json::json!(result)))
+}
+
+async fn generate_html_report_handler(
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let persons: Vec<report::ReportPerson> = serde_json::from_value(
+        body.get("persons").cloned().unwrap_or(serde_json::json!([]))
+    ).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid persons: {}", e)))?;
+
+    let options: report::ReportOptions = serde_json::from_value(
+        body.get("options").cloned().unwrap_or(serde_json::json!({"title": "Report"}))
+    ).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid options: {}", e)))?;
+
+    let svc = report::ProfileReportService::new();
+    let result = svc.generate_html(&persons, &options);
+    Ok(axum::Json(serde_json::json!(result)))
+}
+
+async fn generate_pdf_report_handler(
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let persons: Vec<report::ReportPerson> = serde_json::from_value(
+        body.get("persons").cloned().unwrap_or(serde_json::json!([]))
+    ).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid persons: {}", e)))?;
+
+    let options: report::ReportOptions = serde_json::from_value(
+        body.get("options").cloned().unwrap_or(serde_json::json!({"title": "Report"}))
+    ).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid options: {}", e)))?;
+
+    let svc = report::ProfileReportService::new();
+    let result = svc.generate_pdf(&persons, &options).await;
+    Ok(axum::Json(serde_json::json!(result)))
+}
+
+// ─── Phase 10: Photo Handlers ───────────────────────────────────────────────
+
+async fn upload_photo_handler(
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let cpf = body.get("cpf").and_then(|v| v.as_str())
+        .ok_or((StatusCode::BAD_REQUEST, "Missing cpf".to_string()))?;
+    let base64_data = body.get("photo").and_then(|v| v.as_str())
+        .ok_or((StatusCode::BAD_REQUEST, "Missing photo".to_string()))?;
+
+    let r2_config = photo_storage_config_from_env();
+    let svc = photo_storage::PhotoStorageService::new(r2_config);
+
+    match svc.upload_and_get_url(cpf, base64_data).await {
+        Some(url) => Ok(axum::Json(serde_json::json!({ "success": true, "url": url }))),
+        None => Ok(axum::Json(serde_json::json!({ "success": false, "error": "Upload failed or not configured" }))),
+    }
+}
+
+async fn photo_url_handler(
+    Path(key): Path<String>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let r2_config = photo_storage_config_from_env();
+    let svc = photo_storage::PhotoStorageService::new(r2_config);
+
+    match svc.get_photo_url(&key) {
+        Some(url) => Ok(axum::Json(serde_json::json!({ "url": url }))),
+        None => Err((StatusCode::NOT_FOUND, "Photo not found or R2 not configured".to_string())),
+    }
+}
+
+fn photo_storage_config_from_env() -> Option<photo_storage::R2Config> {
+    let ak = std::env::var("R2_ACCESS_KEY_ID").ok()?;
+    let sk = std::env::var("R2_SECRET_ACCESS_KEY").ok()?;
+    if ak.is_empty() || sk.is_empty() { return None; }
+    Some(photo_storage::R2Config {
+        access_key_id: ak,
+        secret_access_key: sk,
+        endpoint: std::env::var("R2_ENDPOINT")
+            .unwrap_or_else(|_| "https://r2.cloudflarestorage.com".to_string()),
+        bucket: std::env::var("R2_BUCKET").unwrap_or_else(|_| "photos".to_string()),
+        signed_url_expiry_seconds: std::env::var("R2_SIGNED_URL_EXPIRY")
+            .ok().and_then(|s| s.parse().ok()).unwrap_or(604_800),
+    })
 }
 
 /// Helper to construct TwentyService from config

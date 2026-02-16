@@ -63,6 +63,7 @@ utoipa-swagger-ui = { version = "6", features = ["axum"] }
 
 # Metrics
 prometheus = "0.13"
+base64 = "0.22.1"
 
 [dev-dependencies]
 wiremock = "0.6"

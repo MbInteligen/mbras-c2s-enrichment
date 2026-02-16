@@ -41,3 +41,5 @@ pub mod lead_analysis;
 pub mod ibvi_property;
 pub mod c2s_extended;
 pub mod twenty;
+pub mod report;
+pub mod photo_storage;
