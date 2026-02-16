@@ -17,6 +17,8 @@ use crate::discovery::CpfDiscoveryService;
 use crate::services::{WorkApiService, C2SService};
 use crate::meilisearch::MeilisearchCompanyService;
 use crate::fly_scale::FlyScaleService;
+use crate::c2s_extended::C2sExtendedService;
+use crate::ibvi_property::IbviPropertyService;
 
 // ─── MCP Application State (composition root for MCP binary) ────────
 
@@ -31,6 +33,8 @@ pub struct McpAppState {
     pub c2s: C2SService,
     pub meilisearch: Arc<MeilisearchCompanyService>,
     pub fly_scale: Arc<FlyScaleService>,
+    pub c2s_extended: Arc<C2sExtendedService>,
+    pub ibvi_property: Arc<IbviPropertyService>,
 }
 
 impl McpAppState {
@@ -48,6 +52,11 @@ impl McpAppState {
                 &config.meilisearch_key,
             )),
             fly_scale: Arc::new(FlyScaleService::new(config)),
+            c2s_extended: Arc::new(C2sExtendedService::new(
+                &config.c2s_base_url,
+                &config.c2s_token,
+            )),
+            ibvi_property: Arc::new(IbviPropertyService::new(db)),
         }
     }
 }
@@ -722,7 +731,7 @@ impl McpServer {
             // Leads (3)
             "get_lead" => self.handle_get_lead(&args).await,
             "list_leads" => self.handle_list_leads(&args).await,
-            "get_c2s_lead_status" => self.stub_tool(name, &args),
+            "get_c2s_lead_status" => self.handle_get_c2s_lead_status(&args).await,
 
             // Stats (4)
             "get_enrichment_stats" => self.handle_enrichment_stats(&args).await,
@@ -731,9 +740,9 @@ impl McpServer {
             "get_enrichment_health" => self.handle_enrichment_health(&args).await,
 
             // Property (3)
-            "get_properties_by_cpf" => self.stub_tool(name, &args),
-            "get_property_summary" => self.stub_tool(name, &args),
-            "format_property_message" => self.stub_tool(name, &args),
+            "get_properties_by_cpf" => self.handle_get_properties_by_cpf(&args).await,
+            "get_property_summary" => self.handle_get_properties_by_cpf(&args).await,
+            "format_property_message" => self.handle_format_property_message(&args).await,
 
             // Reports (3)
             "generate_profile_report" => self.handle_generate_report(&args),
@@ -749,15 +758,15 @@ impl McpServer {
             "quick_risk_check" => self.handle_quick_risk(&args),
 
             // C2S CRM (9)
-            "fetch_c2s_leads" => self.stub_tool(name, &args),
-            "get_c2s_sellers" => self.stub_tool(name, &args),
-            "send_c2s_message" => self.stub_tool(name, &args),
-            "forward_c2s_lead" => self.stub_tool(name, &args),
-            "search_c2s_by_phone" => self.stub_tool(name, &args),
-            "search_c2s_by_email" => self.stub_tool(name, &args),
+            "fetch_c2s_leads" => self.handle_fetch_c2s_leads(&args).await,
+            "get_c2s_sellers" => self.handle_get_c2s_sellers().await,
+            "send_c2s_message" => self.handle_send_c2s_message(&args).await,
+            "forward_c2s_lead" => self.handle_forward_c2s_lead(&args).await,
+            "search_c2s_by_phone" => self.handle_search_c2s_by_phone(&args).await,
+            "search_c2s_by_email" => self.handle_search_c2s_by_email(&args).await,
             "mark_c2s_interacted" => self.stub_tool(name, &args),
-            "get_c2s_tags" => self.stub_tool(name, &args),
-            "add_c2s_lead_tag" => self.stub_tool(name, &args),
+            "get_c2s_tags" => self.handle_get_c2s_tags().await,
+            "add_c2s_lead_tag" => self.handle_add_c2s_lead_tag(&args).await,
 
             // Domain (3)
             "analyze_email_domain" => self.handle_analyze_domain(&args),
@@ -765,13 +774,13 @@ impl McpServer {
             "identify_company_from_email" => self.handle_identify_company(&args),
 
             // Companies (7)
-            "lookup_cnpj" => self.stub_tool(name, &args),
-            "find_companies_by_name" => self.stub_tool(name, &args),
-            "analyze_company_portfolio" => self.stub_tool(name, &args),
-            "find_companies_by_cpf" => self.stub_tool(name, &args),
-            "get_company_by_cnpj" => self.stub_tool(name, &args),
-            "search_companies" => self.stub_tool(name, &args),
-            "format_companies_message" => self.stub_tool(name, &args),
+            "lookup_cnpj" => self.handle_get_company_by_cnpj(&args).await,
+            "find_companies_by_name" => self.handle_search_companies(&args).await,
+            "analyze_company_portfolio" => self.handle_find_companies_by_cpf(&args).await,
+            "find_companies_by_cpf" => self.handle_find_companies_by_cpf(&args).await,
+            "get_company_by_cnpj" => self.handle_get_company_by_cnpj(&args).await,
+            "search_companies" => self.handle_search_companies(&args).await,
+            "format_companies_message" => self.handle_format_companies_message(&args).await,
 
             // Tier (2)
             "calculate_lead_tier" => self.handle_calculate_tier(&args),
@@ -1168,6 +1177,226 @@ impl McpServer {
                 "foundName": discovery_result.found_name
             }),
             Err(e) => json!({ "success": false, "cpf": cpf, "error": format!("Storage failed: {}", e) }),
+        }
+    }
+
+
+    // ─── C2S CRM Tool Handlers (RML-1109) ───────────────────────
+
+    async fn handle_fetch_c2s_leads(&self, args: &Value) -> Value {
+        let state = require_state!(self, "fetch_c2s_leads");
+        let lead_id = args.get("lead_id").and_then(|v| v.as_str());
+        match lead_id {
+            Some(id) => {
+                match state.c2s.fetch_lead(id).await {
+                    Ok(resp) => json!({ "success": true, "lead": serde_json::to_value(&resp.data).unwrap_or(Value::Null) }),
+                    Err(e) => json!({ "success": false, "error": e.to_string() }),
+                }
+            }
+            None => json!({ "success": false, "error": "lead_id is required (C2S API does not support listing — use list_leads for DB query)" }),
+        }
+    }
+
+    async fn handle_get_c2s_sellers(&self) -> Value {
+        let state = require_state!(self, "get_c2s_sellers");
+        match state.c2s_extended.list_sellers().await {
+            Ok(sellers) => json!({ "success": true, "sellers": serde_json::to_value(&sellers).unwrap_or(Value::Null) }),
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_send_c2s_message(&self, args: &Value) -> Value {
+        let state = require_state!(self, "send_c2s_message");
+        let lead_id = match args.get("lead_id").and_then(|v| v.as_str()) {
+            Some(id) if !id.is_empty() => id,
+            _ => return json!({ "success": false, "error": "lead_id is required" }),
+        };
+        let message = match args.get("message").and_then(|v| v.as_str()) {
+            Some(m) if !m.is_empty() => m,
+            _ => return json!({ "success": false, "error": "message is required" }),
+        };
+        match state.c2s.send_message(lead_id, message).await {
+            Ok(()) => json!({ "success": true, "lead_id": lead_id }),
+            Err(e) => json!({ "success": false, "error": e.to_string() }),
+        }
+    }
+
+    async fn handle_forward_c2s_lead(&self, args: &Value) -> Value {
+        let state = require_state!(self, "forward_c2s_lead");
+        let lead_id = match args.get("lead_id").and_then(|v| v.as_str()) {
+            Some(id) if !id.is_empty() => id,
+            _ => return json!({ "success": false, "error": "lead_id is required" }),
+        };
+        let seller_id = match args.get("seller_id").and_then(|v| v.as_str()) {
+            Some(s) if !s.is_empty() => s,
+            _ => return json!({ "success": false, "error": "seller_id is required" }),
+        };
+        let message = args.get("message").and_then(|v| v.as_str()).map(String::from);
+        let input = crate::c2s_extended::ForwardInput {
+            seller_id: seller_id.to_string(),
+            message,
+        };
+        match state.c2s_extended.forward_lead(lead_id, &input).await {
+            Ok(()) => json!({ "success": true, "lead_id": lead_id, "forwarded_to": seller_id }),
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_search_c2s_by_phone(&self, args: &Value) -> Value {
+        let state = require_state!(self, "search_c2s_by_phone");
+        let phone = match args.get("phone").and_then(|v| v.as_str()) {
+            Some(p) if !p.is_empty() => p,
+            _ => return json!({ "success": false, "error": "phone is required" }),
+        };
+        match state.c2s_extended.search_by_phone(phone).await {
+            Ok(results) => json!({ "success": true, "results": serde_json::to_value(&results).unwrap_or(Value::Null) }),
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_search_c2s_by_email(&self, args: &Value) -> Value {
+        let state = require_state!(self, "search_c2s_by_email");
+        let email = match args.get("email").and_then(|v| v.as_str()) {
+            Some(e) if !e.is_empty() => e,
+            _ => return json!({ "success": false, "error": "email is required" }),
+        };
+        match state.c2s_extended.search_by_email(email).await {
+            Ok(results) => json!({ "success": true, "results": serde_json::to_value(&results).unwrap_or(Value::Null) }),
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_get_c2s_tags(&self) -> Value {
+        let state = require_state!(self, "get_c2s_tags");
+        match state.c2s_extended.list_tags().await {
+            Ok(tags) => json!({ "success": true, "tags": serde_json::to_value(&tags).unwrap_or(Value::Null) }),
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_add_c2s_lead_tag(&self, args: &Value) -> Value {
+        let state = require_state!(self, "add_c2s_lead_tag");
+        let lead_id = match args.get("lead_id").and_then(|v| v.as_str()) {
+            Some(id) if !id.is_empty() => id,
+            _ => return json!({ "success": false, "error": "lead_id is required" }),
+        };
+        let tag_id = match args.get("tag_id").and_then(|v| v.as_str()) {
+            Some(t) if !t.is_empty() => t,
+            _ => return json!({ "success": false, "error": "tag_id is required" }),
+        };
+        match state.c2s_extended.add_tag_to_lead(lead_id, tag_id).await {
+            Ok(()) => json!({ "success": true, "lead_id": lead_id, "tag_id": tag_id }),
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_get_c2s_lead_status(&self, args: &Value) -> Value {
+        let state = require_state!(self, "get_c2s_lead_status");
+        let lead_id = match args.get("lead_id").and_then(|v| v.as_str()) {
+            Some(id) if !id.is_empty() => id,
+            _ => return json!({ "success": false, "error": "lead_id is required" }),
+        };
+        match state.c2s.fetch_lead(lead_id).await {
+            Ok(resp) => json!({ "success": true, "lead": serde_json::to_value(&resp.data).unwrap_or(Value::Null) }),
+            Err(e) => json!({ "success": false, "error": e.to_string() }),
+        }
+    }
+
+    // ─── Company/Meilisearch Tool Handlers (RML-1110) ───────────
+
+    async fn handle_find_companies_by_cpf(&self, args: &Value) -> Value {
+        let state = require_state!(self, "find_companies_by_cpf");
+        let cpf = match args.get("cpf").and_then(|v| v.as_str()) {
+            Some(c) if !c.is_empty() => c,
+            _ => return json!({ "success": false, "error": "cpf is required" }),
+        };
+        let summary = state.meilisearch.find_companies_by_cpf(cpf).await;
+        json!({
+            "success": true,
+            "cpf": cpf,
+            "totalCompanies": summary.total_companies,
+            "totalCapitalSocial": summary.total_capital_social,
+            "companies": serde_json::to_value(&summary.companies).unwrap_or(Value::Null)
+        })
+    }
+
+    async fn handle_get_company_by_cnpj(&self, args: &Value) -> Value {
+        let state = require_state!(self, "get_company_by_cnpj");
+        let cnpj = args.get("cnpj").and_then(|v| v.as_str())
+            .unwrap_or_else(|| args.get("query").and_then(|v| v.as_str()).unwrap_or(""));
+        if cnpj.is_empty() {
+            return json!({ "success": false, "error": "cnpj is required" });
+        }
+        match state.meilisearch.get_company_by_cnpj(cnpj).await {
+            Some(company) => json!({ "success": true, "company": serde_json::to_value(&company).unwrap_or(Value::Null) }),
+            None => json!({ "success": true, "found": false, "message": "Company not found" }),
+        }
+    }
+
+    async fn handle_search_companies(&self, args: &Value) -> Value {
+        let state = require_state!(self, "search_companies");
+        let query = args.get("query").and_then(|v| v.as_str())
+            .or_else(|| args.get("name").and_then(|v| v.as_str()))
+            .unwrap_or("");
+        if query.is_empty() {
+            return json!({ "success": false, "error": "query (or name) is required" });
+        }
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+        let results = state.meilisearch.search_companies(query, limit).await;
+        json!({
+            "success": true,
+            "query": query,
+            "count": results.len(),
+            "companies": serde_json::to_value(&results).unwrap_or(Value::Null)
+        })
+    }
+
+    async fn handle_format_companies_message(&self, args: &Value) -> Value {
+        let state = require_state!(self, "format_companies_message");
+        let cpf = match args.get("cpf").and_then(|v| v.as_str()) {
+            Some(c) if !c.is_empty() => c,
+            _ => return json!({ "success": false, "error": "cpf is required" }),
+        };
+        let summary = state.meilisearch.find_companies_by_cpf(cpf).await;
+        let message = MeilisearchCompanyService::format_companies_for_message(&summary);
+        json!({ "success": true, "cpf": cpf, "message": message, "totalCompanies": summary.total_companies })
+    }
+
+    // ─── Property Tool Handlers (RML-1111) ──────────────────────
+
+    async fn handle_get_properties_by_cpf(&self, args: &Value) -> Value {
+        let state = require_state!(self, "get_properties_by_cpf");
+        let cpf = match args.get("cpf").and_then(|v| v.as_str()) {
+            Some(c) if !c.is_empty() => c,
+            _ => return json!({ "success": false, "error": "cpf is required" }),
+        };
+        match state.ibvi_property.find_properties_by_cpf(cpf).await {
+            Some(summary) => json!({
+                "success": true,
+                "cpf": cpf,
+                "totalProperties": summary.total_properties,
+                "totalCurrentProperties": summary.total_current_properties,
+                "totalMarketValue": summary.total_market_value,
+                "totalMarketValueFormatted": summary.total_market_value_formatted,
+                "totalBuiltArea": summary.total_built_area,
+                "properties": serde_json::to_value(&summary.properties).unwrap_or(Value::Null)
+            }),
+            None => json!({ "success": true, "cpf": cpf, "found": false, "message": "No properties found for this CPF" }),
+        }
+    }
+
+    async fn handle_format_property_message(&self, args: &Value) -> Value {
+        let state = require_state!(self, "format_property_message");
+        let cpf = match args.get("cpf").and_then(|v| v.as_str()) {
+            Some(c) if !c.is_empty() => c,
+            _ => return json!({ "success": false, "error": "cpf is required" }),
+        };
+        match state.ibvi_property.find_properties_by_cpf(cpf).await {
+            Some(summary) => {
+                let message = IbviPropertyService::format_for_message(&summary);
+                json!({ "success": true, "cpf": cpf, "message": message, "totalProperties": summary.total_properties })
+            }
+            None => json!({ "success": true, "cpf": cpf, "found": false, "message": "No properties found" }),
         }
     }
 
