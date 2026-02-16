@@ -38,6 +38,7 @@ mod twenty;
 mod report;
 mod photo_storage;
 mod mcp;
+mod ai_interpret;
 
 use axum::{
     extract::{Path, State},
@@ -272,6 +273,8 @@ async fn main() -> anyhow::Result<()> {
         // Lead analysis endpoint
         .route("/api/v1/analyze/:lead_id", post(analyze_lead_handler))
         .route("/api/v1/analysis/:lead_id", get(get_analysis_handler))
+        // AI natural language interpreter (proxy to OpenRouter)
+        .route("/api/v1/ai/interpret", post(ai_interpret::ai_interpret))
         .layer(axum_middleware::from_fn(api_auth::api_key_auth))
         .layer(
             ServiceBuilder::new()

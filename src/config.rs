@@ -52,6 +52,9 @@ pub struct Config {
     pub twenty_api_key_ws_senior: Option<String>,
     pub twenty_api_key_ws_general: Option<String>,
     pub twenty_enabled: bool,
+
+    // OpenRouter AI (optional — for CRM AI Chat natural language proxy)
+    pub openrouter_api_key: Option<String>,
 }
 
 impl Config {
@@ -233,6 +236,9 @@ impl Config {
 
                 max_len
             },
+            openrouter_api_key: std::env::var("OPENROUTER_API_KEY")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
         };
 
         // Log successful configuration load (without sensitive values)
