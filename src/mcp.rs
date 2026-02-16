@@ -19,6 +19,10 @@ use crate::meilisearch::MeilisearchCompanyService;
 use crate::fly_scale::FlyScaleService;
 use crate::c2s_extended::C2sExtendedService;
 use crate::ibvi_property::IbviPropertyService;
+use crate::twenty::TwentyService;
+use crate::web_search::WebSearchService;
+use crate::lead_analysis::LeadAnalysisService;
+use crate::report::ProfileReportService;
 
 // ─── MCP Application State (composition root for MCP binary) ────────
 
@@ -35,6 +39,10 @@ pub struct McpAppState {
     pub fly_scale: Arc<FlyScaleService>,
     pub c2s_extended: Arc<C2sExtendedService>,
     pub ibvi_property: Arc<IbviPropertyService>,
+    pub twenty: Arc<TwentyService>,
+    pub web_search: Arc<WebSearchService>,
+    pub lead_analysis: Arc<LeadAnalysisService>,
+    pub report: ProfileReportService,
 }
 
 impl McpAppState {
@@ -56,7 +64,18 @@ impl McpAppState {
                 &config.c2s_base_url,
                 &config.c2s_token,
             )),
-            ibvi_property: Arc::new(IbviPropertyService::new(db)),
+            ibvi_property: Arc::new(IbviPropertyService::new(db.clone())),
+            twenty: Arc::new(TwentyService::new(
+                &config.twenty_base_url,
+                &config.twenty_api_key,
+                config.twenty_api_key_ws_ops.as_deref(),
+                config.twenty_api_key_ws_senior.as_deref(),
+                config.twenty_api_key_ws_general.as_deref(),
+                config.twenty_enabled,
+            )),
+            web_search: Arc::new(WebSearchService::new()),
+            lead_analysis: Arc::new(LeadAnalysisService::new(db)),
+            report: ProfileReportService::new(),
         }
     }
 }
@@ -746,13 +765,13 @@ impl McpServer {
 
             // Reports (3)
             "generate_profile_report" => self.handle_generate_report(&args),
-            "generate_report_from_cpfs" => self.stub_tool(name, &args),
-            "generate_report_pdf" => self.stub_tool(name, &args),
+            "generate_report_from_cpfs" => self.handle_generate_report_extended(&args).await,
+            "generate_report_pdf" => self.handle_generate_report_extended(&args).await,
 
             // Analysis (6)
-            "analyze_lead" => self.stub_tool(name, &args),
-            "get_lead_analysis" => self.stub_tool(name, &args),
-            "check_lead_alert" => self.stub_tool(name, &args),
+            "analyze_lead" => self.handle_analyze_lead(&args).await,
+            "get_lead_analysis" => self.handle_get_lead_analysis(&args).await,
+            "check_lead_alert" => self.handle_get_lead_analysis(&args).await,
             "score_lead_quality" => self.handle_score_quality(&args),
             "assess_risk" => self.handle_assess_risk(&args),
             "quick_risk_check" => self.handle_quick_risk(&args),
@@ -787,24 +806,24 @@ impl McpServer {
             "get_tier_recommendation" => self.handle_tier_recommendation(&args),
 
             // Search (5)
-            "search_web" => self.stub_tool(name, &args),
-            "search_person" => self.stub_tool(name, &args),
-            "search_news" => self.stub_tool(name, &args),
-            "generate_web_insights" => self.stub_tool(name, &args),
+            "search_web" => self.handle_search_web(&args).await,
+            "search_person" => self.handle_search_person(&args).await,
+            "search_news" => self.handle_search_news(&args).await,
+            "generate_web_insights" => self.handle_search_person(&args).await,
             "analyze_lead_name" => self.handle_analyze_name(&args),
 
             // Twenty CRM (13)
-            "twenty_create_lead" => self.stub_tool(name, &args),
-            "twenty_update_lead" => self.stub_tool(name, &args),
-            "twenty_get_lead" => self.stub_tool(name, &args),
+            "twenty_create_lead" => self.handle_twenty_create_lead(&args).await,
+            "twenty_update_lead" => self.handle_twenty_update_lead(&args).await,
+            "twenty_get_lead" => self.handle_twenty_get_lead(&args).await,
             "twenty_route_lead" => self.handle_twenty_route(&args),
-            "twenty_delegate_lead" => self.stub_tool(name, &args),
-            "twenty_bulk_import" => self.stub_tool(name, &args),
-            "twenty_get_pipeline_stats" => self.stub_tool(name, &args),
-            "twenty_get_broker_stats" => self.stub_tool(name, &args),
-            "twenty_get_adoption_metrics" => self.stub_tool(name, &args),
-            "twenty_check_sla_violations" => self.stub_tool(name, &args),
-            "twenty_check_delegation_expiry" => self.stub_tool(name, &args),
+            "twenty_delegate_lead" => self.handle_twenty_delegate_lead(&args).await,
+            "twenty_bulk_import" => self.handle_twenty_bulk_import(&args).await,
+            "twenty_get_pipeline_stats" => self.handle_twenty_get_pipeline_stats(&args).await,
+            "twenty_get_broker_stats" => self.handle_twenty_get_broker_stats(&args).await,
+            "twenty_get_adoption_metrics" => self.handle_twenty_get_pipeline_stats(&args).await,
+            "twenty_check_sla_violations" => self.handle_twenty_check_sla_violations(&args).await,
+            "twenty_check_delegation_expiry" => self.handle_twenty_check_delegation_expiry(&args).await,
             "twenty_calculate_intent_signal" => self.handle_twenty_intent(&args),
             "twenty_get_next_action" => self.handle_twenty_next_action(&args),
 
@@ -1180,6 +1199,257 @@ impl McpServer {
         }
     }
 
+
+
+    // ─── Web Search Tool Handlers (RML-1112) ────────────────────
+
+    async fn handle_search_web(&self, args: &Value) -> Value {
+        let state = require_state!(self, "search_web");
+        let query = match args.get("query").and_then(|v| v.as_str()) {
+            Some(q) if !q.is_empty() => q,
+            _ => return json!({ "success": false, "error": "query is required" }),
+        };
+        let num = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as u32;
+        let results = state.web_search.search(query, num).await;
+        json!({ "success": true, "query": query, "count": results.len(), "results": serde_json::to_value(&results).unwrap_or(Value::Null) })
+    }
+
+    async fn handle_search_person(&self, args: &Value) -> Value {
+        let state = require_state!(self, "search_person");
+        let name = match args.get("name").and_then(|v| v.as_str()) {
+            Some(n) if !n.is_empty() => n,
+            _ => return json!({ "success": false, "error": "name is required" }),
+        };
+        let info = state.web_search.search_person(name).await;
+        json!({ "success": true, "name": name, "person": serde_json::to_value(&info).unwrap_or(Value::Null) })
+    }
+
+    async fn handle_search_news(&self, args: &Value) -> Value {
+        let state = require_state!(self, "search_news");
+        let name = match args.get("name").and_then(|v| v.as_str()) {
+            Some(n) if !n.is_empty() => n,
+            _ => return json!({ "success": false, "error": "name is required" }),
+        };
+        let results = state.web_search.search_news(name).await;
+        let has_negative = results.iter().any(|r| r.is_negative);
+        json!({ "success": true, "name": name, "hasNegative": has_negative, "count": results.len(), "results": serde_json::to_value(&results).unwrap_or(Value::Null) })
+    }
+
+    // ─── Lead Analysis Tool Handlers (RML-1113) ─────────────────
+
+    async fn handle_analyze_lead(&self, args: &Value) -> Value {
+        let state = require_state!(self, "analyze_lead");
+        let input = crate::lead_analysis::LeadAnalysisInput {
+            lead_id: args.get("lead_id").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
+            name: args.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            email: args.get("email").and_then(|v| v.as_str()).map(String::from),
+            phone: args.get("phone").and_then(|v| v.as_str()).map(String::from),
+            cpf: args.get("cpf").and_then(|v| v.as_str()).map(String::from),
+            income: args.get("income").and_then(|v| v.as_f64()),
+        };
+        let result = state.lead_analysis.analyze(&input).await;
+        json!({
+            "success": true,
+            "tier": result.tier,
+            "score": result.score,
+            "discovered": serde_json::to_value(&result.discovered).unwrap_or(Value::Null),
+            "alerts": result.alerts,
+            "highlights": result.highlights,
+            "recommendation": serde_json::to_value(&result.recommendation).unwrap_or(Value::Null),
+            "riskAssessment": serde_json::to_value(&result.risk_assessment).unwrap_or(Value::Null),
+            "durationMs": result.duration_ms
+        })
+    }
+
+    async fn handle_get_lead_analysis(&self, args: &Value) -> Value {
+        let state = require_state!(self, "get_lead_analysis");
+        let lead_id = match args.get("lead_id").and_then(|v| v.as_str()) {
+            Some(id) if !id.is_empty() => id,
+            _ => return json!({ "success": false, "error": "lead_id is required" }),
+        };
+        match state.lead_analysis.get_cached(lead_id).await {
+            Some(result) => json!({
+                "success": true,
+                "cached": true,
+                "tier": result.tier,
+                "score": result.score,
+                "discovered": serde_json::to_value(&result.discovered).unwrap_or(Value::Null),
+                "recommendation": serde_json::to_value(&result.recommendation).unwrap_or(Value::Null)
+            }),
+            None => json!({ "success": true, "cached": false, "message": "No cached analysis found — use analyze_lead to generate" }),
+        }
+    }
+
+    // ─── Report Tool Handlers ───────────────────────────────────
+
+    async fn handle_generate_report_extended(&self, args: &Value) -> Value {
+        let state = require_state!(self, "generate_report");
+        let format = args.get("format").and_then(|v| v.as_str()).unwrap_or("html");
+        let persons: Vec<crate::report::ReportPerson> = args.get("persons")
+            .or_else(|| args.get("cpfs"))
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        if persons.is_empty() {
+            return json!({ "success": false, "error": "persons array is required" });
+        }
+        let options = crate::report::ReportOptions {
+            title: args.get("title").and_then(|v| v.as_str()).unwrap_or("Lead Report").to_string(),
+            subtitle: args.get("subtitle").and_then(|v| v.as_str()).map(String::from),
+            classification: "Confidencial - Uso Interno".to_string(),
+            include_contacts: true,
+            include_income: true,
+            output_dir: args.get("output_dir").and_then(|v| v.as_str()).map(String::from),
+        };
+        let result = match format {
+            "pdf" => state.report.generate_pdf(&persons, &options).await,
+            "markdown" | "md" => state.report.generate_markdown(&persons, &options),
+            _ => state.report.generate_html(&persons, &options),
+        };
+        json!({
+            "success": result.success,
+            "format": result.format,
+            "filePath": result.file_path,
+            "contentLength": result.content.as_ref().map(|c| c.len()),
+            "error": result.error
+        })
+    }
+
+    // ─── Twenty CRM Tool Handlers (RML-1113) ────────────────────
+
+    async fn handle_twenty_create_lead(&self, args: &Value) -> Value {
+        let state = require_state!(self, "twenty_create_lead");
+        if !state.twenty.is_enabled() {
+            return json!({ "success": false, "error": "Twenty CRM is not enabled" });
+        }
+        let input = crate::twenty::TwentyLeadInput {
+            name: args.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            phone: args.get("phone").and_then(|v| v.as_str()).map(String::from),
+            email: args.get("email").and_then(|v| v.as_str()).map(String::from),
+            source: args.get("source").and_then(|v| v.as_str()).map(String::from),
+            tier: args.get("tier").and_then(|v| v.as_str()).map(String::from),
+            score: args.get("score").and_then(|v| v.as_i64()).map(|v| v as i32),
+            cpf: args.get("cpf").and_then(|v| v.as_str()).map(String::from),
+            metadata: args.get("metadata").cloned(),
+        };
+        match state.twenty.create_lead(&input).await {
+            Ok(lead) => json!({ "success": true, "lead": serde_json::to_value(&lead).unwrap_or(Value::Null) }),
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_twenty_update_lead(&self, args: &Value) -> Value {
+        let state = require_state!(self, "twenty_update_lead");
+        if !state.twenty.is_enabled() {
+            return json!({ "success": false, "error": "Twenty CRM is not enabled" });
+        }
+        let lead_id = match args.get("lead_id").and_then(|v| v.as_str()) {
+            Some(id) if !id.is_empty() => id,
+            _ => return json!({ "success": false, "error": "lead_id is required" }),
+        };
+        let workspace = parse_workspace(args.get("workspace").and_then(|v| v.as_str()));
+        let updates = args.get("updates").cloned().unwrap_or(json!({}));
+        match state.twenty.update_lead(lead_id, workspace, updates).await {
+            Ok(result) => json!({ "success": true, "result": result }),
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_twenty_get_lead(&self, args: &Value) -> Value {
+        let state = require_state!(self, "twenty_get_lead");
+        if !state.twenty.is_enabled() {
+            return json!({ "success": false, "error": "Twenty CRM is not enabled" });
+        }
+        let lead_id = match args.get("lead_id").and_then(|v| v.as_str()) {
+            Some(id) if !id.is_empty() => id,
+            _ => return json!({ "success": false, "error": "lead_id is required" }),
+        };
+        match state.twenty.find_lead(lead_id).await {
+            Ok(Some(lead)) => json!({ "success": true, "lead": lead }),
+            Ok(None) => json!({ "success": true, "found": false }),
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_twenty_delegate_lead(&self, args: &Value) -> Value {
+        let state = require_state!(self, "twenty_delegate_lead");
+        if !state.twenty.is_enabled() {
+            return json!({ "success": false, "error": "Twenty CRM is not enabled" });
+        }
+        let input: crate::twenty::DelegateInput = match serde_json::from_value(args.clone()) {
+            Ok(i) => i,
+            Err(e) => return json!({ "success": false, "error": format!("Invalid input: {}", e) }),
+        };
+        let tier = args.get("tier").and_then(|v| v.as_str());
+        let info = match tier {
+            Some(t) => state.twenty.create_delegation_with_tier(&input, t),
+            None => state.twenty.create_delegation(&input),
+        };
+        json!({ "success": true, "delegation": serde_json::to_value(&info).unwrap_or(Value::Null) })
+    }
+
+    async fn handle_twenty_bulk_import(&self, args: &Value) -> Value {
+        let state = require_state!(self, "twenty_bulk_import");
+        if !state.twenty.is_enabled() {
+            return json!({ "success": false, "error": "Twenty CRM is not enabled" });
+        }
+        let input: crate::twenty::BulkImportInput = match serde_json::from_value(args.clone()) {
+            Ok(i) => i,
+            Err(e) => return json!({ "success": false, "error": format!("Invalid input: {}", e) }),
+        };
+        match state.twenty.bulk_import(&input).await {
+            Ok(result) => json!({ "success": true, "result": serde_json::to_value(&result).unwrap_or(Value::Null) }),
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_twenty_get_pipeline_stats(&self, args: &Value) -> Value {
+        let state = require_state!(self, "twenty_get_pipeline_stats");
+        if !state.twenty.is_enabled() {
+            return json!({ "success": false, "error": "Twenty CRM is not enabled" });
+        }
+        let workspace = parse_workspace(args.get("workspace").and_then(|v| v.as_str()));
+        match state.twenty.get_pipeline_stats(workspace).await {
+            Ok(stats) => json!({ "success": true, "stats": serde_json::to_value(&stats).unwrap_or(Value::Null) }),
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_twenty_get_broker_stats(&self, args: &Value) -> Value {
+        let state = require_state!(self, "twenty_get_broker_stats");
+        if !state.twenty.is_enabled() {
+            return json!({ "success": false, "error": "Twenty CRM is not enabled" });
+        }
+        let workspace = parse_workspace(args.get("workspace").and_then(|v| v.as_str()));
+        match state.twenty.get_broker_stats(workspace).await {
+            Ok(stats) => json!({ "success": true, "brokers": serde_json::to_value(&stats).unwrap_or(Value::Null) }),
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_twenty_check_sla_violations(&self, args: &Value) -> Value {
+        let state = require_state!(self, "twenty_check_sla_violations");
+        if !state.twenty.is_enabled() {
+            return json!({ "success": false, "error": "Twenty CRM is not enabled" });
+        }
+        let workspace = parse_workspace(args.get("workspace").and_then(|v| v.as_str()));
+        match state.twenty.check_sla_violations(workspace).await {
+            Ok(violations) => json!({ "success": true, "violations": serde_json::to_value(&violations).unwrap_or(Value::Null), "count": violations.len() }),
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_twenty_check_delegation_expiry(&self, _args: &Value) -> Value {
+        let _state = require_state!(self, "twenty_check_delegation_expiry");
+        if !_state.twenty.is_enabled() {
+            return json!({ "success": false, "error": "Twenty CRM is not enabled" });
+        }
+        // Delegation expiry checking is per-lead — return guidance
+        json!({
+            "success": true,
+            "note": "Use twenty_get_lead to fetch a lead, then check delegation.expires_at field",
+            "hint": "TwentyService::is_delegation_expired(delegation) checks expiry"
+        })
+    }
 
     // ─── C2S CRM Tool Handlers (RML-1109) ───────────────────────
 
@@ -1884,6 +2154,17 @@ impl ServerHandler for McpServer {
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────
+
+
+// ─── Helpers ────────────────────────────────────────────────────
+
+fn parse_workspace(s: Option<&str>) -> crate::twenty::Workspace {
+    match s {
+        Some("WS-OPS" | "ws-ops" | "ops") => crate::twenty::Workspace::WsOps,
+        Some("WS-SENIOR" | "ws-senior" | "senior") => crate::twenty::Workspace::WsSenior,
+        _ => crate::twenty::Workspace::WsGeneral,
+    }
+}
 
 #[cfg(test)]
 mod tests {
