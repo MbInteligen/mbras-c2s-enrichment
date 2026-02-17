@@ -223,6 +223,22 @@ impl CustomerService {
         Ok(result)
     }
 
+
+    /// Search by name returning ALL matches (up to 20)
+    pub async fn search_by_name_all(&self, name: &str) -> Result<Vec<Customer>, AppError> {
+        let results = sqlx::query_as::<_, Customer>(
+            "SELECT * FROM core.parties
+             WHERE LOWER(full_name) LIKE LOWER($1) AND party_type = 'person'
+             ORDER BY full_name
+             LIMIT 20",
+        )
+        .bind(format!("%{}%", name))
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(results)
+    }
+
     /// Get customer emails
     pub async fn get_customer_emails(
         &self,
@@ -385,6 +401,40 @@ impl EnrichmentService {
     }
 
     /// Build unified response from various data sources
+    /// Search customers by name, returning multiple unified responses (database only, no Work API)
+    pub async fn search_customers_by_name(
+        &self,
+        name: &str,
+    ) -> Result<Vec<UnifiedCustomerResponse>, AppError> {
+        let customers = self.customer_service.search_by_name_all(name).await?;
+
+        let mut results = Vec::new();
+        for customer in customers {
+            let emails = self
+                .customer_service
+                .get_customer_emails(&customer.id)
+                .await?;
+            let phones = self
+                .customer_service
+                .get_customer_phones(&customer.id)
+                .await?;
+
+            let mut modules_consulted = Vec::new();
+            let sources = vec!["local_db".to_string()];
+            let response = self.build_unified_response(
+                Some(customer),
+                emails,
+                phones,
+                None,
+                &mut modules_consulted,
+                sources,
+            );
+            results.push(response);
+        }
+
+        Ok(results)
+    }
+
     fn build_unified_response(
         &self,
         customer: Option<Customer>,

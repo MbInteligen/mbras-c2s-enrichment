@@ -233,6 +233,7 @@ async fn main() -> anyhow::Result<()> {
         // API endpoints
         .route("/api/v1/leads", post(handlers::process_lead))
         .route("/api/v1/contributor/customer", get(handlers::get_customer))
+        .route("/api/v1/contributor/search", get(handlers::search_customers))
         .route("/api/v1/customers/:id", get(handlers::get_customer_by_id))
         .route("/api/v1/enrich", post(handlers::enrich_customer))
         // Work API module endpoints

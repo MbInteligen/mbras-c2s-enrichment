@@ -54,6 +54,29 @@ pub async fn health() -> (StatusCode, Json<serde_json::Value>) {
     )
 }
 
+/// GET /api/v1/contributor/search?name=...
+/// Search endpoint returning multiple results
+pub async fn search_customers(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<CustomerQueryParams>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let name = params.name.as_deref().ok_or_else(|| {
+        AppError::BadRequest("name parameter is required for search".to_string())
+    })?;
+
+    tracing::info!("GET /contributor/search?name={}", name);
+
+    let enrichment_service = EnrichmentService::new(&state.config, state.db.clone());
+    let results = enrichment_service.search_customers_by_name(name).await?;
+
+    tracing::info!("Search returned {} results for name '{}'", results.len(), name);
+
+    Ok(Json(serde_json::json!({
+        "results": results,
+        "count": results.len()
+    })))
+}
+
 /// GET /api/v1/contributor/customer
 /// Main endpoint that mimics ibvi-api's /contributor/customer
 /// This is what mbras-c2s will call
