@@ -10,7 +10,6 @@ use std::sync::Arc;
 use crate::handlers::AppState;
 
 const OPENROUTER_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL: &str = "google/gemini-3-flash-preview";
 
 const SYSTEM_PROMPT: &str = r#"You are MBRAS AI, a friendly and knowledgeable assistant for MBRAS, a luxury real estate company in São Paulo. You help brokers and staff manage leads, look up people, check properties, and run CRM operations.
 
@@ -112,16 +111,7 @@ User: "oi"
 {"command": "chat", "args": "Olá! Sou o assistente MBRAS. Posso ajudar você a buscar informações de leads, consultar CPFs, verificar imóveis, gerenciar o CRM e muito mais. O que precisa?"}
 
 User: "o que você consegue fazer?"
-{"command": "chat", "args": "Consigo fazer várias coisas:
-
-• Buscar pessoas por CPF, telefone, email ou nome
-• Consultar empresas e imóveis vinculados a um CPF
-• Enriquecer dados de leads
-• Gerenciar o CRM: encaminhar leads, adicionar notas, registrar ligações
-• Ver estatísticas do pipeline e SLA
-• Analisar leads com scoring automático
-
-É só me dizer o que precisa!"}
+{"command": "chat", "args": "Consigo fazer várias coisas:\n\n• Buscar pessoas por CPF, telefone, email ou nome\n• Consultar empresas e imóveis vinculados a um CPF\n• Enriquecer dados de leads\n• Gerenciar o CRM: encaminhar leads, adicionar notas, registrar ligações\n• Ver estatísticas do pipeline e SLA\n• Analisar leads com scoring automático\n\nÉ só me dizer o que precisa!"}
 
 User: "quem é o dono do telefone 11 99887-7766?"
 {"command": "phone", "args": "11998877766"}
@@ -154,6 +144,8 @@ User: "obrigado"
 #[derive(Deserialize)]
 pub struct InterpretRequest {
     pub input: String,
+    /// Model tier: "fast", "base", or "smart". Defaults to "base".
+    pub model: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -162,6 +154,37 @@ pub struct InterpretResponse {
     pub args: String,
 }
 
+#[derive(Serialize)]
+pub struct ModelInfo {
+    pub id: String,
+    pub label: String,
+    pub model: String,
+}
+
+/// GET /api/v1/ai/models — returns available model tiers
+pub async fn ai_models(
+    State(state): State<Arc<AppState>>,
+) -> Json<Vec<ModelInfo>> {
+    Json(vec![
+        ModelInfo {
+            id: "fast".into(),
+            label: "Fast".into(),
+            model: state.config.model_fast.clone(),
+        },
+        ModelInfo {
+            id: "base".into(),
+            label: "Base".into(),
+            model: state.config.model_base.clone(),
+        },
+        ModelInfo {
+            id: "smart".into(),
+            label: "Smart".into(),
+            model: state.config.model_smart.clone(),
+        },
+    ])
+}
+
+/// POST /api/v1/ai/interpret — interpret natural language with selected model
 pub async fn ai_interpret(
     State(state): State<Arc<AppState>>,
     Json(body): Json<InterpretRequest>,
@@ -180,18 +203,26 @@ pub async fn ai_interpret(
         ));
     }
 
+    // Resolve model tier to actual model ID
+    let model = match body.model.as_deref() {
+        Some("fast") => &state.config.model_fast,
+        Some("smart") => &state.config.model_smart,
+        _ => &state.config.model_base, // default
+    };
+
     let client = reqwest::Client::new();
 
     let openrouter_body = json!({
-        "model": MODEL,
+        "model": model,
         "messages": [
             { "role": "system", "content": SYSTEM_PROMPT },
             { "role": "user", "content": body.input.trim() }
         ],
         "temperature": 0.1,
         "max_tokens": 256,
-        
     });
+
+    tracing::info!(model = %model, input_len = body.input.len(), "AI interpret request");
 
     let resp = client
         .post(OPENROUTER_URL)
@@ -199,7 +230,7 @@ pub async fn ai_interpret(
         .header("Content-Type", "application/json")
         .header("HTTP-Referer", "https://crm-ai-chat.fly.dev")
         .header("X-Title", "CRM AI Chat")
-        .timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(30))
         .json(&openrouter_body)
         .send()
         .await
@@ -270,7 +301,7 @@ pub async fn ai_interpret(
         .unwrap_or("")
         .to_string();
 
-    tracing::info!(command = %command, "AI interpret: mapped to command");
+    tracing::info!(command = %command, model = %model, "AI interpret: mapped to command");
 
     Ok(Json(InterpretResponse { command, args }))
 }

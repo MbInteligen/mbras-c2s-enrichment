@@ -55,6 +55,9 @@ pub struct Config {
 
     // OpenRouter AI (optional — for CRM AI Chat natural language proxy)
     pub openrouter_api_key: Option<String>,
+    pub model_fast: String,
+    pub model_base: String,
+    pub model_smart: String,
 }
 
 impl Config {
@@ -239,6 +242,12 @@ impl Config {
             openrouter_api_key: std::env::var("OPENROUTER_API_KEY")
                 .ok()
                 .filter(|s| !s.trim().is_empty()),
+            model_fast: std::env::var("MODEL_FAST")
+                .unwrap_or_else(|_| "moonshotai/kimi-k2.5".to_string()),
+            model_base: std::env::var("MODEL_BASE")
+                .unwrap_or_else(|_| "google/gemini-3-flash-preview".to_string()),
+            model_smart: std::env::var("MODEL_SMART")
+                .unwrap_or_else(|_| "anthropic/claude-opus-4.6".to_string()),
         };
 
         // Log successful configuration load (without sensitive values)
