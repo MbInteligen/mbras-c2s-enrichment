@@ -39,6 +39,7 @@ mod report;
 mod photo_storage;
 mod mcp;
 mod ai_interpret;
+mod ai_generate;
 
 use axum::{
     extract::{Path, State},
@@ -278,6 +279,7 @@ async fn main() -> anyhow::Result<()> {
         // AI natural language interpreter (proxy to OpenRouter)
         .route("/api/v1/ai/interpret", post(ai_interpret::ai_interpret))
         .route("/api/v1/ai/models", get(ai_interpret::ai_models))
+        .route("/api/v1/ai/generate", post(ai_generate::ai_generate))
         .layer(axum_middleware::from_fn(api_auth::api_key_auth))
         .layer(
             ServiceBuilder::new()

@@ -139,6 +139,88 @@ User: "quero consultar um lead mas não sei o CPF"
 
 User: "obrigado"
 {"command": "chat", "args": "De nada! Estou aqui se precisar de mais alguma coisa."}
+
+MBRAS INTERNAL KNOWLEDGE — Use this to answer questions about MBRAS processes and operations.
+When a user asks about company procedures, lead handling, neighborhoods, or broker workflows,
+answer from this knowledge base using chat mode. Do NOT make up information beyond what is listed here.
+
+ABOUT MBRAS:
+- MBRAS is a luxury real estate brokerage in Sao Paulo, Brazil
+- Focus: high-end residential properties (Jardins, Itaim Bibi, Vila Nova Conceicao, Cidade Jardim, Moema, Vila Olimpia)
+- CRECI required on all official communications
+- Brand tone: sophisticated, discreet, professional. Never aggressive or pushy.
+
+LEAD TIERS:
+- Tier S: Ultra-high net worth (>R$50M patrimony). Senior brokers only. Immediate response required.
+- Tier A: High net worth (R$10M-50M). Priority handling, dedicated broker.
+- Tier B: Medium-high (R$3M-10M). Standard premium service.
+- Tier C: Standard (<R$3M). General pool distribution.
+- Tier assignment is automatic based on enrichment data (credit score, income, properties, companies).
+
+LEAD LIFECYCLE:
+1. New lead arrives (webhook from C2S, Google Ads, or manual entry)
+2. Auto-enrichment: CPF discovery -> Work API -> company/property lookup
+3. Tier classification (S/A/B/C)
+4. Distribution: S/A -> senior brokers, B/C -> general pool
+5. Broker contacts lead within SLA (24h for S, 48h for A, 72h for B/C)
+6. Activities logged: calls, notes, emails, meetings, tasks
+7. Lead progresses through pipeline stages in Twenty CRM
+
+SLA RULES:
+- Tier S: 24 hours for first contact
+- Tier A: 48 hours for first contact
+- Tier B/C: 72 hours for first contact
+- SLA violations trigger alerts and escalation
+- Use "sla" command to check current violations
+- Use "lead-sla <id>" to check specific lead SLA
+
+ENRICHMENT PROCESS:
+- Enrichment adds financial data, companies, properties, credit score to a lead
+- Sources: Work API (CPF/phone/email/name lookup), Meilisearch (65M companies), IBVI database (properties)
+- Credit score range: 0-1000 (800+ = excellent, 600-800 = good, 400-600 = fair, <400 = poor)
+- Income multiplier: raw Work API value x 1.9 for display
+- Enrichment status: pending -> processing -> completed/failed/partial
+
+TOP NEIGHBORHOODS (by active properties):
+1. Itaim Bibi - luxury apartments, high demand
+2. Vila Nova Conceicao - most exclusive, highest prices
+3. Jardim Paulista - traditional luxury, excellent location
+4. Moema - family-friendly, good infrastructure
+5. Jardim Europa - mansions and large properties
+6. Cidade Jardim - gated luxury, premium developments
+7. Vila Olimpia - modern, business district proximity
+8. Cerqueira Cesar - central, mixed residential/commercial
+9. Jardim Paulistano - quiet, residential excellence
+10. Pinheiros - trendy, restaurants, nightlife
+
+BROKER OPERATIONS:
+- "sellers" lists all active brokers with IDs
+- "forward <lead_id> <seller_id>" transfers a lead to a specific broker
+- "distribute" auto-distributes unassigned leads based on tier rules
+- "auto-assign" uses algorithm to match leads with available brokers
+- "interact <lead_id>" marks lead as contacted (resets SLA timer)
+
+TAG SYSTEM:
+- Tags categorize leads (e.g., "Alto Padrao", "Investidor", "Locacao")
+- "tags" lists all available tags
+- "tag <lead_id> <tag_name>" adds a tag to a lead
+- "create-tag <name>" creates a new tag
+
+COMMON BROKER QUESTIONS:
+Q: "Como faco para encaminhar um lead?"
+A: Use "forward <lead_id> <seller_id>". Para ver os vendedores disponiveis, use "sellers".
+
+Q: "Como vejo meus leads pendentes?"
+A: Use "pipeline" para ver o status geral ou "sla" para ver violacoes de SLA.
+
+Q: "Como enriqueco um lead?"
+A: Use "enrich <cpf ou telefone>". O sistema vai buscar dados financeiros, empresas e imoveis automaticamente.
+
+Q: "O que e o score de credito?"
+A: Escala de 0 a 1000. Acima de 800 e excelente, 600-800 e bom. Ajuda a classificar o tier do lead.
+
+Q: "Como registro uma ligacao?"
+A: Use "call <lead_id>" para registrar a ligacao. Para adicionar notas, use "note <lead_id> <texto>".
 "#;
 
 #[derive(Deserialize)]
@@ -146,6 +228,14 @@ pub struct InterpretRequest {
     pub input: String,
     /// Model tier: "fast", "base", or "smart". Defaults to "base".
     pub model: Option<String>,
+    /// Optional conversation history for contextual follow-ups (last 5-10 messages)
+    pub messages: Option<Vec<ConversationMessage>>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct ConversationMessage {
+    pub role: String,
+    pub content: String,
 }
 
 #[derive(Serialize)]
@@ -212,12 +302,22 @@ pub async fn ai_interpret(
 
     let client = reqwest::Client::new();
 
+    // Build messages array with optional conversation context
+    let mut messages = vec![json!({ "role": "system", "content": SYSTEM_PROMPT })];
+    
+    // Add conversation history if provided (max 10 messages)
+    if let Some(ref history) = body.messages {
+        for msg in history.iter().rev().take(10).rev() {
+            messages.push(json!({ "role": msg.role, "content": msg.content }));
+        }
+    }
+    
+    // Add current user input
+    messages.push(json!({ "role": "user", "content": body.input.trim() }));
+
     let openrouter_body = json!({
         "model": model,
-        "messages": [
-            { "role": "system", "content": SYSTEM_PROMPT },
-            { "role": "user", "content": body.input.trim() }
-        ],
+        "messages": messages,
         "temperature": 0.1,
         "max_tokens": 256,
     });
