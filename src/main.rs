@@ -49,6 +49,7 @@ use axum::{
     Router,
 };
 use moka::future::Cache;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tower::ServiceBuilder;
@@ -275,6 +276,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/analysis/:lead_id", get(get_analysis_handler))
         // AI natural language interpreter (proxy to OpenRouter)
         .route("/api/v1/ai/interpret", post(ai_interpret::ai_interpret))
+        .route("/api/v1/ai/models", get(ai_interpret::ai_models))
         .layer(axum_middleware::from_fn(api_auth::api_key_auth))
         .layer(
             ServiceBuilder::new()
@@ -323,7 +325,7 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("Server listening on {}", addr);
 
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
 
     Ok(())
 }
