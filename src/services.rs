@@ -77,6 +77,17 @@ impl WorkApiService {
             AppError::ExternalApiError(format!("Failed to parse Work API response: {}", e))
         })?;
 
+        // Work API returns HTTP 200 but with {"status": 403} in the body when token is invalid
+        if let Some(status) = result.get("status").and_then(|s| s.as_u64()) {
+            if status == 403 {
+                let reason = result.get("reason").and_then(|r| r.as_str()).unwrap_or("Unknown");
+                tracing::error!("Work API returned 403 in body: {}", reason);
+                return Err(AppError::ExternalApiError(format!(
+                    "Work API access denied: {}", reason
+                )));
+            }
+        }
+
         tracing::info!("Successfully fetched Work API modules");
         Ok(result)
     }
@@ -113,6 +124,17 @@ impl WorkApiService {
         let result: Value = response.json().await.map_err(|e| {
             AppError::ExternalApiError(format!("Failed to parse Work API response: {}", e))
         })?;
+
+        // Work API returns HTTP 200 but with {"status": 403} in the body when token is invalid
+        if let Some(status) = result.get("status").and_then(|s| s.as_u64()) {
+            if status == 403 {
+                let reason = result.get("reason").and_then(|r| r.as_str()).unwrap_or("Unknown");
+                tracing::error!("Work API module '{}' returned 403 in body: {}", module, reason);
+                return Err(AppError::ExternalApiError(format!(
+                    "Work API access denied: {}", reason
+                )));
+            }
+        }
 
         Ok(Some(result))
     }
