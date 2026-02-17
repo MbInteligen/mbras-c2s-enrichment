@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::handlers::AppState;
 
 const OPENROUTER_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL: &str = "google/gemini-2.5-flash";
+const MODEL: &str = "google/gemini-3-flash-preview";
 
 const SYSTEM_PROMPT: &str = r#"You are a CRM command router for a real estate company (MBRAS). Convert the user's natural language message into a structured command.
 
