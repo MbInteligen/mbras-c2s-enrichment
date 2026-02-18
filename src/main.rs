@@ -1,50 +1,51 @@
+mod ai_generate;
+mod ai_interpret;
+mod alert;
+mod api_auth;
+mod batch;
+mod c2s_extended;
 mod cache_validator;
 mod circuit_breaker;
+mod cnpj_fallback;
 mod config;
+mod context;
+mod cpf;
+mod cron;
+mod dashboard;
 mod db;
 mod db_storage;
+mod discovery;
+mod domain_analyzer;
 mod enrichment;
+mod enrichment_monitor;
 mod errors;
+mod fly_scale;
 mod gateway_client;
 mod google_ads_handler;
 mod google_ads_models;
 mod handlers;
+mod ibvi_property;
+mod lead_analysis;
+mod mcp;
+mod meilisearch;
 mod models;
+mod name_matcher;
+mod obs;
+mod photo_storage;
+mod report;
+mod retry;
+mod risk_detector;
+mod scoring;
 mod services;
+mod twenty;
+mod web_search;
 mod webhook_handler;
 mod webhook_models;
-mod obs;
-mod scoring;
-mod cpf;
-mod name_matcher;
-mod discovery;
-mod retry;
-mod batch;
-mod cron;
-mod meilisearch;
-mod fly_scale;
-mod cnpj_fallback;
-mod alert;
-mod enrichment_monitor;
-mod dashboard;
-mod api_auth;
-mod lead_analysis;
-mod ibvi_property;
-mod domain_analyzer;
-mod risk_detector;
-mod web_search;
-mod c2s_extended;
-mod twenty;
-mod report;
-mod photo_storage;
-mod mcp;
-mod ai_interpret;
-mod ai_generate;
 
 use axum::{
     extract::{Path, State},
-    middleware as axum_middleware,
     http::StatusCode,
+    middleware as axum_middleware,
     response::IntoResponse,
     routing::{get, post},
     Router,
@@ -234,7 +235,10 @@ async fn main() -> anyhow::Result<()> {
         // API endpoints
         .route("/api/v1/leads", post(handlers::process_lead))
         .route("/api/v1/contributor/customer", get(handlers::get_customer))
-        .route("/api/v1/contributor/search", get(handlers::search_customers))
+        .route(
+            "/api/v1/contributor/search",
+            get(handlers::search_customers),
+        )
         .route("/api/v1/customers/:id", get(handlers::get_customer_by_id))
         .route("/api/v1/enrich", post(handlers::enrich_customer))
         // Work API module endpoints
@@ -258,8 +262,14 @@ async fn main() -> anyhow::Result<()> {
         )
         // Batch enrichment endpoints
         // Company Intelligence (Meilisearch 65M)
-        .route("/api/v1/company/cpf/:cpf", get(handlers::get_companies_by_cpf))
-        .route("/api/v1/company/cnpj/:cnpj", get(handlers::get_company_by_cnpj))
+        .route(
+            "/api/v1/company/cpf/:cpf",
+            get(handlers::get_companies_by_cpf),
+        )
+        .route(
+            "/api/v1/company/cnpj/:cnpj",
+            get(handlers::get_company_by_cnpj),
+        )
         .route("/api/v1/company/search", get(handlers::search_companies))
         .route("/batch/enrich-direct", post(batch::enrich_direct))
         .route("/batch/retry-failed", post(batch::retry_failed))
@@ -280,6 +290,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/ai/interpret", post(ai_interpret::ai_interpret))
         .route("/api/v1/ai/models", get(ai_interpret::ai_models))
         .route("/api/v1/ai/generate", post(ai_generate::ai_generate))
+        // Unified context endpoint (parallel fan-out to Work API + Meilisearch + IBVI)
+        .route("/api/v1/context", get(context::get_context))
         .layer(axum_middleware::from_fn(api_auth::api_key_auth))
         .layer(
             ServiceBuilder::new()
@@ -311,10 +323,12 @@ async fn main() -> anyhow::Result<()> {
     // Start enrichment cron if enabled
     if cron_enabled {
         tokio::spawn(cron::start_enrichment_cron(cron_state));
-        tracing::info!("Enrichment cron enabled (business: {}s, evening: {}s, night: {}s)",
+        tracing::info!(
+            "Enrichment cron enabled (business: {}s, evening: {}s, night: {}s)",
             config.cron_interval_business_secs,
             config.cron_interval_evening_secs,
-            config.cron_interval_night_secs);
+            config.cron_interval_night_secs
+        );
     } else {
         tracing::info!("Enrichment cron disabled (set ENABLE_CRON=true to enable)");
     }
@@ -328,7 +342,11 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("Server listening on {}", addr);
 
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }
@@ -338,7 +356,10 @@ async fn serve_metrics() -> impl IntoResponse {
     let body = obs::metrics::render();
     (
         StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
         body,
     )
 }
@@ -352,9 +373,7 @@ async fn enrichment_stats_handler(
 }
 
 /// GET /stats/health — service health report
-async fn service_health_handler(
-    State(state): State<Arc<handlers::AppState>>,
-) -> impl IntoResponse {
+async fn service_health_handler(State(state): State<Arc<handlers::AppState>>) -> impl IntoResponse {
     let health = state.alert_service.get_service_health().await;
     let status = if health.all_healthy {
         StatusCode::OK
@@ -393,7 +412,8 @@ async fn get_analysis_handler(
         None => (
             StatusCode::NOT_FOUND,
             axum::Json(serde_json::json!({"error": "No analysis found for this lead"})),
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
@@ -404,18 +424,26 @@ async fn property_by_cpf_handler(
 ) -> impl IntoResponse {
     let svc = ibvi_property::IbviPropertyService::new(state.db.clone());
     match svc.find_properties_by_cpf(&cpf).await {
-        Some(summary) => (StatusCode::OK, axum::Json(serde_json::json!({
-            "success": true,
-            "cpf": cpf,
-            "summary": summary,
-            "message": ibvi_property::IbviPropertyService::format_for_message(&summary),
-        }))).into_response(),
-        None => (StatusCode::OK, axum::Json(serde_json::json!({
-            "success": true,
-            "cpf": cpf,
-            "summary": null,
-            "message": "No properties found",
-        }))).into_response(),
+        Some(summary) => (
+            StatusCode::OK,
+            axum::Json(serde_json::json!({
+                "success": true,
+                "cpf": cpf,
+                "summary": summary,
+                "message": ibvi_property::IbviPropertyService::format_for_message(&summary),
+            })),
+        )
+            .into_response(),
+        None => (
+            StatusCode::OK,
+            axum::Json(serde_json::json!({
+                "success": true,
+                "cpf": cpf,
+                "summary": null,
+                "message": "No properties found",
+            })),
+        )
+            .into_response(),
     }
 }
 
@@ -424,7 +452,8 @@ async fn property_by_cpf_handler(
 async fn list_sellers_handler(
     State(state): State<Arc<handlers::AppState>>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.list_sellers().await {
         Ok(sellers) => Ok(axum::Json(serde_json::json!({ "data": sellers }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -435,7 +464,8 @@ async fn get_seller_handler(
     State(state): State<Arc<handlers::AppState>>,
     Path(id): Path<String>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.get_seller(&id).await {
         Ok(Some(seller)) => Ok(axum::Json(serde_json::json!({ "data": seller }))),
         Ok(None) => Err((StatusCode::NOT_FOUND, "Seller not found".to_string())),
@@ -447,7 +477,8 @@ async fn create_seller_handler(
     State(state): State<Arc<handlers::AppState>>,
     axum::Json(input): axum::Json<c2s_extended::SellerCreateInput>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.create_seller(&input).await {
         Ok(seller) => Ok(axum::Json(serde_json::json!({ "data": seller }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -459,7 +490,8 @@ async fn update_seller_handler(
     Path(id): Path<String>,
     axum::Json(input): axum::Json<c2s_extended::SellerUpdateInput>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.update_seller(&id, &input).await {
         Ok(seller) => Ok(axum::Json(serde_json::json!({ "data": seller }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -469,7 +501,8 @@ async fn update_seller_handler(
 async fn list_tags_handler(
     State(state): State<Arc<handlers::AppState>>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.list_tags().await {
         Ok(tags) => Ok(axum::Json(serde_json::json!({ "data": tags }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -480,7 +513,8 @@ async fn create_tag_handler(
     State(state): State<Arc<handlers::AppState>>,
     axum::Json(input): axum::Json<c2s_extended::TagCreateInput>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.create_tag(&input).await {
         Ok(tag) => Ok(axum::Json(serde_json::json!({ "data": tag }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -491,7 +525,8 @@ async fn get_lead_tags_handler(
     State(state): State<Arc<handlers::AppState>>,
     Path(lead_id): Path<String>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.get_lead_tags(&lead_id).await {
         Ok(tags) => Ok(axum::Json(serde_json::json!({ "data": tags }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -503,9 +538,12 @@ async fn add_tag_to_lead_handler(
     Path(lead_id): Path<String>,
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let tag_id = body.get("tag_id").and_then(|v| v.as_str())
+    let tag_id = body
+        .get("tag_id")
+        .and_then(|v| v.as_str())
         .ok_or((StatusCode::BAD_REQUEST, "Missing tag_id".to_string()))?;
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.add_tag_to_lead(&lead_id, tag_id).await {
         Ok(_) => Ok(axum::Json(serde_json::json!({ "success": true }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -517,7 +555,8 @@ async fn register_activity_handler(
     Path(lead_id): Path<String>,
     axum::Json(input): axum::Json<c2s_extended::ActivityInput>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.register_activity(&lead_id, &input).await {
         Ok(result) => Ok(axum::Json(result)),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -529,9 +568,12 @@ async fn add_note_handler(
     Path(lead_id): Path<String>,
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let note = body.get("body").and_then(|v| v.as_str())
+    let note = body
+        .get("body")
+        .and_then(|v| v.as_str())
         .ok_or((StatusCode::BAD_REQUEST, "Missing body".to_string()))?;
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.add_note(&lead_id, note).await {
         Ok(_) => Ok(axum::Json(serde_json::json!({ "success": true }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -543,7 +585,8 @@ async fn forward_lead_handler(
     Path(lead_id): Path<String>,
     axum::Json(input): axum::Json<c2s_extended::ForwardInput>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.forward_lead(&lead_id, &input).await {
         Ok(_) => Ok(axum::Json(serde_json::json!({ "success": true }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -554,7 +597,8 @@ async fn search_by_phone_handler(
     State(state): State<Arc<handlers::AppState>>,
     Path(phone): Path<String>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.search_by_phone(&phone).await {
         Ok(results) => Ok(axum::Json(serde_json::json!({ "data": results }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -565,7 +609,8 @@ async fn search_by_email_handler(
     State(state): State<Arc<handlers::AppState>>,
     Path(email): Path<String>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.search_by_email(&email).await {
         Ok(results) => Ok(axum::Json(serde_json::json!({ "data": results }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -587,7 +632,8 @@ async fn distribute_leads_handler(
     State(state): State<Arc<handlers::AppState>>,
     axum::Json(input): axum::Json<c2s_extended::QueueDistributeInput>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.distribute_leads(&input).await {
         Ok(result) => Ok(axum::Json(result)),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -598,7 +644,8 @@ async fn auto_assign_handler(
     State(state): State<Arc<handlers::AppState>>,
     axum::Json(input): axum::Json<c2s_extended::QueueAutoAssignInput>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    let svc =
+        c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.auto_assign(&input).await {
         Ok(result) => Ok(axum::Json(result)),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -638,14 +685,20 @@ async fn twenty_delegate_handler(
     let svc = twenty_service_from_config(&_state.config);
     let tier = body.get("tier").and_then(|v| v.as_str()).unwrap_or("C");
     let reason: twenty::DelegationReason = serde_json::from_value(
-        body.get("reason").cloned().unwrap_or(serde_json::json!("workload"))
-    ).unwrap_or(twenty::DelegationReason::Workload);
+        body.get("reason")
+            .cloned()
+            .unwrap_or(serde_json::json!("workload")),
+    )
+    .unwrap_or(twenty::DelegationReason::Workload);
 
     let input = twenty::DelegateInput {
         lead_id: lead_id.clone(),
         to_workspace: twenty::Workspace::WsGeneral,
         reason,
-        delegated_by: body.get("delegated_by").and_then(|v| v.as_str()).map(String::from),
+        delegated_by: body
+            .get("delegated_by")
+            .and_then(|v| v.as_str())
+            .map(String::from),
     };
 
     let delegation = svc.create_delegation_with_tier(&input, tier);
@@ -659,7 +712,8 @@ async fn twenty_sla_handler(
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
     let svc = twenty_service_from_config(&_state.config);
     let tier = params.get("tier").map(|s| s.as_str()).unwrap_or("C");
-    let created_at = params.get("created_at")
+    let created_at = params
+        .get("created_at")
         .ok_or((StatusCode::BAD_REQUEST, "Missing created_at".to_string()))?;
 
     match svc.check_sla(tier, created_at) {
@@ -748,19 +802,24 @@ async fn twenty_bulk_import_handler(
     }
 }
 
-
 // ─── Phase 9: Report Handlers ───────────────────────────────────────────────
 
 async fn generate_markdown_report_handler(
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
     let persons: Vec<report::ReportPerson> = serde_json::from_value(
-        body.get("persons").cloned().unwrap_or(serde_json::json!([]))
-    ).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid persons: {}", e)))?;
+        body.get("persons")
+            .cloned()
+            .unwrap_or(serde_json::json!([])),
+    )
+    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid persons: {}", e)))?;
 
     let options: report::ReportOptions = serde_json::from_value(
-        body.get("options").cloned().unwrap_or(serde_json::json!({"title": "Report"}))
-    ).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid options: {}", e)))?;
+        body.get("options")
+            .cloned()
+            .unwrap_or(serde_json::json!({"title": "Report"})),
+    )
+    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid options: {}", e)))?;
 
     let svc = report::ProfileReportService::new();
     let result = svc.generate_markdown(&persons, &options);
@@ -771,12 +830,18 @@ async fn generate_html_report_handler(
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
     let persons: Vec<report::ReportPerson> = serde_json::from_value(
-        body.get("persons").cloned().unwrap_or(serde_json::json!([]))
-    ).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid persons: {}", e)))?;
+        body.get("persons")
+            .cloned()
+            .unwrap_or(serde_json::json!([])),
+    )
+    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid persons: {}", e)))?;
 
     let options: report::ReportOptions = serde_json::from_value(
-        body.get("options").cloned().unwrap_or(serde_json::json!({"title": "Report"}))
-    ).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid options: {}", e)))?;
+        body.get("options")
+            .cloned()
+            .unwrap_or(serde_json::json!({"title": "Report"})),
+    )
+    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid options: {}", e)))?;
 
     let svc = report::ProfileReportService::new();
     let result = svc.generate_html(&persons, &options);
@@ -787,12 +852,18 @@ async fn generate_pdf_report_handler(
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
     let persons: Vec<report::ReportPerson> = serde_json::from_value(
-        body.get("persons").cloned().unwrap_or(serde_json::json!([]))
-    ).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid persons: {}", e)))?;
+        body.get("persons")
+            .cloned()
+            .unwrap_or(serde_json::json!([])),
+    )
+    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid persons: {}", e)))?;
 
     let options: report::ReportOptions = serde_json::from_value(
-        body.get("options").cloned().unwrap_or(serde_json::json!({"title": "Report"}))
-    ).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid options: {}", e)))?;
+        body.get("options")
+            .cloned()
+            .unwrap_or(serde_json::json!({"title": "Report"})),
+    )
+    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid options: {}", e)))?;
 
     let svc = report::ProfileReportService::new();
     let result = svc.generate_pdf(&persons, &options).await;
@@ -804,17 +875,25 @@ async fn generate_pdf_report_handler(
 async fn upload_photo_handler(
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let cpf = body.get("cpf").and_then(|v| v.as_str())
+    let cpf = body
+        .get("cpf")
+        .and_then(|v| v.as_str())
         .ok_or((StatusCode::BAD_REQUEST, "Missing cpf".to_string()))?;
-    let base64_data = body.get("photo").and_then(|v| v.as_str())
+    let base64_data = body
+        .get("photo")
+        .and_then(|v| v.as_str())
         .ok_or((StatusCode::BAD_REQUEST, "Missing photo".to_string()))?;
 
     let r2_config = photo_storage_config_from_env();
     let svc = photo_storage::PhotoStorageService::new(r2_config);
 
     match svc.upload_and_get_url(cpf, base64_data).await {
-        Some(url) => Ok(axum::Json(serde_json::json!({ "success": true, "url": url }))),
-        None => Ok(axum::Json(serde_json::json!({ "success": false, "error": "Upload failed or not configured" }))),
+        Some(url) => Ok(axum::Json(
+            serde_json::json!({ "success": true, "url": url }),
+        )),
+        None => Ok(axum::Json(
+            serde_json::json!({ "success": false, "error": "Upload failed or not configured" }),
+        )),
     }
 }
 
@@ -826,14 +905,19 @@ async fn photo_url_handler(
 
     match svc.get_photo_url(&key) {
         Some(url) => Ok(axum::Json(serde_json::json!({ "url": url }))),
-        None => Err((StatusCode::NOT_FOUND, "Photo not found or R2 not configured".to_string())),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            "Photo not found or R2 not configured".to_string(),
+        )),
     }
 }
 
 fn photo_storage_config_from_env() -> Option<photo_storage::R2Config> {
     let ak = std::env::var("R2_ACCESS_KEY_ID").ok()?;
     let sk = std::env::var("R2_SECRET_ACCESS_KEY").ok()?;
-    if ak.is_empty() || sk.is_empty() { return None; }
+    if ak.is_empty() || sk.is_empty() {
+        return None;
+    }
     Some(photo_storage::R2Config {
         access_key_id: ak,
         secret_access_key: sk,
@@ -841,7 +925,9 @@ fn photo_storage_config_from_env() -> Option<photo_storage::R2Config> {
             .unwrap_or_else(|_| "https://r2.cloudflarestorage.com".to_string()),
         bucket: std::env::var("R2_BUCKET").unwrap_or_else(|_| "photos".to_string()),
         signed_url_expiry_seconds: std::env::var("R2_SIGNED_URL_EXPIRY")
-            .ok().and_then(|s| s.parse().ok()).unwrap_or(604_800),
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(604_800),
     })
 }
 

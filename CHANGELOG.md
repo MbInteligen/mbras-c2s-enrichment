@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-18
+
+### Added
+
+#### IBVI-401: Unified Context Endpoint
+- `GET /api/v1/context` — unified context endpoint that fans out to Work API + Meilisearch + IBVI properties in parallel via `tokio::join!`
+- Accepts `?cpf=`, `?phone=`, or `?email=` query parameters
+- Auto-discovers CPF from phone/email via DB lookup with Diretrix fallback
+- Returns combined JSON with `work_api`, `companies`, `properties`, and `sources` map
+- Work API failure is non-fatal (returns partial result with `sources.work_api: false`)
+- New file: `src/context.rs` (~120 LoC)
+- Route added to `protected_routes` in `src/main.rs`
+
+#### Cross-Frontend Support
+- Endpoint consumed by both `next-ai-chat` (IBVI-390 getContext tool) and `crm-ai-chat` (IBVI-395 context command)
+
+---
+
 ## [1.0.0] - 2025-11-23
 
 ### 🎉 Initial Production Release
