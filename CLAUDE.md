@@ -1805,29 +1805,28 @@ McpAppState (composition root)
 - `McpServer::new(config)` — stub mode (pure-logic tools only, for tests)
 - `McpServer::with_state(config, state)` — fully wired (DB + all services)
 
-### Tool Status (66 total)
+### Tool Status (66 total — all functional)
 
 | Status | Count | Examples |
 |--------|-------|---------|
-| **Wired** | 51 | DB reads, discovery, enrichment, C2S CRM, companies, property, search, Twenty, analysis, reports |
+| **Wired** | 52 | DB reads, discovery, enrichment, C2S CRM, companies, property, search, Twenty, analysis, reports |
 | **Pure-logic** | 14 | validate_cpf, score_lead_quality, assess_risk, tier, domain, Twenty workflow |
-| **Stub** | 1 | mark_c2s_interacted (no C2S API method exists) |
 
 ### Tool Categories
 
-| Category | Wired | Pure-Logic | Stub |
-|----------|-------|------------|------|
-| Enrichment | 3 | 0 | 0 |
-| Discovery | 4 | 1 | 0 |
-| DB Reads | 5 | 0 | 0 |
-| C2S CRM | 9 | 0 | 1 |
-| Companies | 7 | 0 | 0 |
-| Property | 3 | 0 | 0 |
-| Search/Web | 4 | 0 | 0 |
-| Analysis | 3 | 3 | 0 |
-| Reports | 3 | 0 | 0 |
-| Twenty CRM | 10 | 10 | 0 |
-| Health/Stats | 4 | 0 | 0 |
+| Category | Wired | Pure-Logic |
+|----------|-------|------------|
+| Enrichment | 3 | 0 |
+| Discovery | 4 | 1 |
+| DB Reads | 5 | 0 |
+| C2S CRM | 10 | 0 |
+| Companies | 7 | 0 |
+| Property | 3 | 0 |
+| Search/Web | 4 | 0 |
+| Analysis | 3 | 3 |
+| Reports | 3 | 0 |
+| Twenty CRM | 10 | 10 |
+| Health/Stats | 4 | 0 |
 
 ### Key Implementation Pattern
 
@@ -1853,3 +1852,209 @@ macro_rules! require_state {
 - RML-1111: 3 property tools
 - RML-1112: 4 search/web tools
 - RML-1113: 10 Twenty + 3 analysis + 2 report tools
+
+---
+
+## Rust Compilation Optimization (MacBook Air M4, 24GB RAM)
+
+### Why Rust Compiles Slowly
+
+Rustc goes through: parsing/macro expansion, type/borrow checking, monomorphization of generics, LLVM optimization passes, and linking. The M4 Air has passive cooling (no fan), so sustained compilations may throttle CPU — software optimizations can reduce build times by 30-60%.
+
+### Quick Wins
+
+**Never use `--release` during development.** Release mode triples compile time. Use the `dev-fast` profile when you need some optimization:
+
+```toml
+# Cargo.toml
+[profile.dev-fast]
+inherits = "dev"
+opt-level = 1
+```
+
+```bash
+cargo build --profile dev-fast
+```
+
+**Limit parallel jobs** to avoid thermal throttling on the Air:
+
+```bash
+export CARGO_BUILD_JOBS=6    # In ~/.zshrc — use 6 of 10 cores
+```
+
+Start with 4 (performance core count), increase by 1-2 and measure. On the Air without a fan, 4-6 jobs often beats 10 because it avoids thermal throttling.
+
+### Linker: No Alternative on macOS ARM
+
+**Do NOT configure mold/sold on macOS.** The mold linker dropped Mach-O (macOS) support, and sold is unmaintained. Old guides recommending `sold` are outdated and will cause build failures.
+
+Current macOS options:
+- **ld64 (Apple's default):** Slow but stable. The only reliable option on macOS ARM.
+- **lld (LLVM):** Experimental, not production-ready for Apple Silicon.
+- **zld (Uber):** Archived, does not support Apple Silicon.
+
+If you previously had sold/mold config in `~/.cargo/config.toml`, **remove it**:
+```toml
+# REMOVE any lines like this:
+# [target.aarch64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=/opt/homebrew/bin/sold"]
+```
+
+Mitigations: use `debug = 1` (less debug info for linker), split workspace into smaller crates, rely on incremental compilation and sccache.
+
+Linking typically takes 1-5s for medium projects — small compared to LLVM codegen (30-90s). The other optimizations in this guide have much greater impact.
+
+### Compilation Cache: sccache
+
+The single most impactful tool. Caches compilation artifacts so unchanged code skips recompilation. Invaluable after `cargo clean` or branch switches.
+
+```bash
+# Install
+brew install sccache
+
+# Configure in ~/.zshrc
+export RUSTC_WRAPPER=sccache
+export SCCACHE_CACHE_SIZE="30G"
+
+# Monitor
+sccache --show-stats
+
+# Clear cache if needed
+sccache --stop-server && rm -rf ~/.cache/sccache && sccache --start-server
+```
+
+### Global Cargo Config (~/.cargo/config.toml)
+
+```toml
+# No custom linker — mold/sold not available on macOS ARM
+
+[build]
+jobs = 6
+
+[registries.crates-io]
+protocol = "sparse"
+
+[net]
+git-fetch-with-cli = true
+```
+
+### Project Cargo.toml Profiles
+
+```toml
+# Optimize dependencies in dev mode (deps compiled with opt, your code in debug)
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev]
+debug = 1              # Limited debug info (faster compile + link)
+incremental = true
+
+[profile.dev-fast]
+inherits = "dev"
+opt-level = 1
+
+[profile.release]
+opt-level = 3
+lto = "thin"           # Faster than full LTO
+strip = true
+panic = "abort"
+```
+
+### IDE: rust-analyzer
+
+Critical: use a separate target directory so rust-analyzer doesn't invalidate your `cargo build` cache. Without this, rust-analyzer and cargo fight over the `target/` directory lock.
+
+```json
+// VS Code settings.json
+{
+  "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.check.extraArgs": ["--target-dir", "target/ra"]
+}
+```
+
+```json
+// Zed settings.json
+{
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        "check": {
+          "command": "clippy",
+          "extraArgs": ["--target-dir", "target/ra"]
+        }
+      }
+    }
+  }
+}
+```
+
+Add `target/ra/` to `.gitignore`. Note: two target directories use significant disk space.
+
+### Cranelift Backend (Experimental)
+
+Much faster than LLVM for dev builds, but generates slower runtime code. Some crates (inline asm, SIMD) won't compile with it. Never use for release.
+
+```bash
+rustup component add rustc-codegen-cranelift-preview
+CARGO_PROFILE_DEV_CODEGEN_BACKEND=cranelift cargo build
+```
+
+### Useful Tools
+
+```bash
+# Faster parallel test runner
+cargo install cargo-nextest
+cargo nextest run
+
+# Auto-rebuild on file changes
+cargo install cargo-watch
+cargo watch -x check -x test
+
+# Build timing report (identifies slow crates)
+cargo build --timings
+
+# Find duplicate dependencies
+cargo tree --duplicates
+
+# Reduce unnecessary features — be specific instead of "full"
+# tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+```
+
+### Benchmarking Builds
+
+```bash
+# Clean build
+cargo clean && time cargo build 2>&1
+
+# Incremental build (change one file, then)
+time cargo build 2>&1
+
+# Monitor thermal throttling during builds
+sudo powermetrics --samplers smc -i 1000 | grep -i throt
+
+# Monitor sccache hit rate
+sccache --show-stats
+```
+
+### Expected Results (All Optimizations Applied)
+
+- 30-50% faster clean builds (sccache on repeated builds)
+- 60-80% faster incremental builds
+- Significantly less thermal throttling (reduced job count)
+- Biggest gains: sccache eliminating redundant recompilation + avoiding `--release` during dev
+
+### Shell Profile Summary (~/.zshrc)
+
+```bash
+export RUSTC_WRAPPER=sccache
+export SCCACHE_CACHE_SIZE="30G"
+export CARGO_BUILD_JOBS=6
+```
+
+### Troubleshooting
+
+- **Old sold/mold config causing build failures:** Remove any `rustflags` referencing sold/mold from `~/.cargo/config.toml`
+- **sccache not caching:** Run `sccache --start-server`, check `sccache --show-stats` for hit rate
+- **sccache conflicts with rust-analyzer:** Ensure RA uses separate `target/ra/` directory
+- **Cranelift failures:** Falls back needed for inline asm, SIMD. Proc macros always use LLVM regardless.
+- **Linker errors after Xcode update:** Run `xcode-select --install` to update Command Line Tools

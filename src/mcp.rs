@@ -2,27 +2,24 @@
 //! Port of ts-c2s-api/src/mcp/ to Rust using rmcp crate.
 
 use rmcp::{
-    ErrorData as McpError, RoleServer, ServerHandler,
-    model::*,
-    service::RequestContext,
-    schemars,
+    model::*, schemars, service::RequestContext, ErrorData as McpError, RoleServer, ServerHandler,
 };
 use serde_json::{json, Value};
-use std::sync::Arc;
 use sqlx::PgPool;
+use std::sync::Arc;
 
+use crate::c2s_extended::C2sExtendedService;
 use crate::config::Config;
 use crate::db_storage::EnrichmentStorage;
 use crate::discovery::CpfDiscoveryService;
-use crate::services::{WorkApiService, C2SService};
-use crate::meilisearch::MeilisearchCompanyService;
 use crate::fly_scale::FlyScaleService;
-use crate::c2s_extended::C2sExtendedService;
 use crate::ibvi_property::IbviPropertyService;
+use crate::lead_analysis::LeadAnalysisService;
+use crate::meilisearch::MeilisearchCompanyService;
+use crate::report::ProfileReportService;
+use crate::services::{C2SService, WorkApiService};
 use crate::twenty::TwentyService;
 use crate::web_search::WebSearchService;
-use crate::lead_analysis::LeadAnalysisService;
-use crate::report::ProfileReportService;
 
 // ─── MCP Application State (composition root for MCP binary) ────────
 
@@ -624,96 +621,252 @@ impl McpServer {
     fn tool_definitions() -> Vec<Tool> {
         vec![
             // Enrichment (3)
-            Self::define_tool::<EnrichLeadInput>("enrich_lead", "Enrich a single lead by phone, email, or name with full CPF discovery"),
-            Self::define_tool::<EnrichBulkInput>("enrich_bulk", "Batch enrichment of multiple leads with rate limiting"),
-            Self::define_tool::<RetryFailedInput>("retry_failed", "Retry failed or partial enrichments"),
-
+            Self::define_tool::<EnrichLeadInput>(
+                "enrich_lead",
+                "Enrich a single lead by phone, email, or name with full CPF discovery",
+            ),
+            Self::define_tool::<EnrichBulkInput>(
+                "enrich_bulk",
+                "Batch enrichment of multiple leads with rate limiting",
+            ),
+            Self::define_tool::<RetryFailedInput>(
+                "retry_failed",
+                "Retry failed or partial enrichments",
+            ),
             // Discovery (5)
-            Self::define_tool::<FindAndSavePersonInput>("find_and_save_person", "Find person by phone, fetch full data, save to PostgreSQL"),
-            Self::define_tool::<DiscoverCpfInput>("discover_cpf", "Find CPF using multi-tier discovery (Work API, DuckDB, Diretrix, DBase)"),
-            Self::define_tool::<LookupCpfInput>("lookup_cpf", "Get full data for a known CPF from Work API"),
-            Self::define_tool::<SearchCpfByNameInput>("search_cpf_by_name", "Search 223M CPF database by name"),
-            Self::define_tool::<ValidateCpfInput>("validate_cpf", "Validate CPF format with mod-11 check"),
-
+            Self::define_tool::<FindAndSavePersonInput>(
+                "find_and_save_person",
+                "Find person by phone, fetch full data, save to PostgreSQL",
+            ),
+            Self::define_tool::<DiscoverCpfInput>(
+                "discover_cpf",
+                "Find CPF using multi-tier discovery (Work API, DuckDB, Diretrix, DBase)",
+            ),
+            Self::define_tool::<LookupCpfInput>(
+                "lookup_cpf",
+                "Get full data for a known CPF from Work API",
+            ),
+            Self::define_tool::<SearchCpfByNameInput>(
+                "search_cpf_by_name",
+                "Search 223M CPF database by name",
+            ),
+            Self::define_tool::<ValidateCpfInput>(
+                "validate_cpf",
+                "Validate CPF format with mod-11 check",
+            ),
             // Leads (3)
             Self::define_tool::<GetLeadInput>("get_lead", "Get lead details by ID or phone"),
-            Self::define_tool::<ListLeadsInput>("list_leads", "List leads with filters (status, seller, date range)"),
-            Self::define_tool::<LeadIdInput>("get_c2s_lead_status", "Get full C2S lead record including messages"),
-
+            Self::define_tool::<ListLeadsInput>(
+                "list_leads",
+                "List leads with filters (status, seller, date range)",
+            ),
+            Self::define_tool::<LeadIdInput>(
+                "get_c2s_lead_status",
+                "Get full C2S lead record including messages",
+            ),
             // Stats (4)
-            Self::define_tool::<StatsInput>("get_enrichment_stats", "Enrichment statistics with grouping options"),
-            Self::define_tool::<serde_json::Value>("get_service_health", "Health status of all services"),
-            Self::define_tool::<serde_json::Value>("get_enrichment_rate", "Current enrichment rate"),
-            Self::define_tool::<ThresholdInput>("get_enrichment_health", "Health status vs threshold"),
-
+            Self::define_tool::<StatsInput>(
+                "get_enrichment_stats",
+                "Enrichment statistics with grouping options",
+            ),
+            Self::define_tool::<serde_json::Value>(
+                "get_service_health",
+                "Health status of all services",
+            ),
+            Self::define_tool::<serde_json::Value>(
+                "get_enrichment_rate",
+                "Current enrichment rate",
+            ),
+            Self::define_tool::<ThresholdInput>(
+                "get_enrichment_health",
+                "Health status vs threshold",
+            ),
             // Property (3)
-            Self::define_tool::<CpfInput>("get_properties_by_cpf", "Find all properties owned by CPF in IBVI database"),
-            Self::define_tool::<CpfInput>("get_property_summary", "Aggregated property portfolio summary"),
-            Self::define_tool::<CpfInput>("format_property_message", "Format properties for C2S message"),
-
+            Self::define_tool::<CpfInput>(
+                "get_properties_by_cpf",
+                "Find all properties owned by CPF in IBVI database",
+            ),
+            Self::define_tool::<CpfInput>(
+                "get_property_summary",
+                "Aggregated property portfolio summary",
+            ),
+            Self::define_tool::<CpfInput>(
+                "format_property_message",
+                "Format properties for C2S message",
+            ),
             // Reports (3)
-            Self::define_tool::<GenerateReportInput>("generate_profile_report", "Generate profile report (MD/HTML)"),
-            Self::define_tool::<GenerateReportFromCpfsInput>("generate_report_from_cpfs", "Lookup CPFs, enrich, and generate report"),
+            Self::define_tool::<GenerateReportInput>(
+                "generate_profile_report",
+                "Generate profile report (MD/HTML)",
+            ),
+            Self::define_tool::<GenerateReportFromCpfsInput>(
+                "generate_report_from_cpfs",
+                "Lookup CPFs, enrich, and generate report",
+            ),
             Self::define_tool::<GenerateReportInput>("generate_report_pdf", "Generate PDF report"),
-
             // Analysis (6)
-            Self::define_tool::<AnalyzeLeadInput>("analyze_lead", "Deep analysis with web search, risk detection, tier calculation"),
-            Self::define_tool::<LeadIdInput>("get_lead_analysis", "Retrieve cached analysis from database"),
-            Self::define_tool::<LeadIdInput>("check_lead_alert", "Check if lead should trigger premium/risk alert"),
-            Self::define_tool::<ScoreLeadInput>("score_lead_quality", "Calculate 0-100 quality score with breakdown"),
-            Self::define_tool::<RiskAssessInput>("assess_risk", "Full risk assessment with negative news search"),
-            Self::define_tool::<NameInput>("quick_risk_check", "Fast check against known risks database"),
-
+            Self::define_tool::<AnalyzeLeadInput>(
+                "analyze_lead",
+                "Deep analysis with web search, risk detection, tier calculation",
+            ),
+            Self::define_tool::<LeadIdInput>(
+                "get_lead_analysis",
+                "Retrieve cached analysis from database",
+            ),
+            Self::define_tool::<LeadIdInput>(
+                "check_lead_alert",
+                "Check if lead should trigger premium/risk alert",
+            ),
+            Self::define_tool::<ScoreLeadInput>(
+                "score_lead_quality",
+                "Calculate 0-100 quality score with breakdown",
+            ),
+            Self::define_tool::<RiskAssessInput>(
+                "assess_risk",
+                "Full risk assessment with negative news search",
+            ),
+            Self::define_tool::<NameInput>(
+                "quick_risk_check",
+                "Fast check against known risks database",
+            ),
             // C2S CRM (9)
-            Self::define_tool::<FetchC2sLeadsInput>("fetch_c2s_leads", "Fetch leads directly from C2S with filters"),
+            Self::define_tool::<FetchC2sLeadsInput>(
+                "fetch_c2s_leads",
+                "Fetch leads directly from C2S with filters",
+            ),
             Self::define_tool::<serde_json::Value>("get_c2s_sellers", "List all sellers in C2S"),
-            Self::define_tool::<SendMessageInput>("send_c2s_message", "Add a message/note to a lead"),
-            Self::define_tool::<ForwardLeadInput>("forward_c2s_lead", "Forward a lead to another seller"),
+            Self::define_tool::<SendMessageInput>(
+                "send_c2s_message",
+                "Add a message/note to a lead",
+            ),
+            Self::define_tool::<ForwardLeadInput>(
+                "forward_c2s_lead",
+                "Forward a lead to another seller",
+            ),
             Self::define_tool::<PhoneInput>("search_c2s_by_phone", "Find lead by phone in C2S"),
             Self::define_tool::<EmailInput>("search_c2s_by_email", "Find lead by email in C2S"),
             Self::define_tool::<LeadIdInput>("mark_c2s_interacted", "Mark a lead as interacted"),
             Self::define_tool::<TagInput>("get_c2s_tags", "List available tags"),
             Self::define_tool::<AddTagInput>("add_c2s_lead_tag", "Add a tag to a lead"),
-
             // Domain (3)
-            Self::define_tool::<EmailInput>("analyze_email_domain", "Full domain analysis from email"),
-            Self::define_tool::<EmailInput>("get_domain_trust_score", "Quick trust score for domain"),
-            Self::define_tool::<EmailInput>("identify_company_from_email", "Identify company from email domain"),
-
+            Self::define_tool::<EmailInput>(
+                "analyze_email_domain",
+                "Full domain analysis from email",
+            ),
+            Self::define_tool::<EmailInput>(
+                "get_domain_trust_score",
+                "Quick trust score for domain",
+            ),
+            Self::define_tool::<EmailInput>(
+                "identify_company_from_email",
+                "Identify company from email domain",
+            ),
             // Companies (7)
             Self::define_tool::<CnpjInput>("lookup_cnpj", "Lookup company by CNPJ"),
-            Self::define_tool::<NameInput>("find_companies_by_name", "Find companies by owner name"),
-            Self::define_tool::<NameInput>("analyze_company_portfolio", "Aggregate company portfolio analysis"),
-            Self::define_tool::<CpfInput>("find_companies_by_cpf", "Find all companies where CPF is partner (65M CNPJs)"),
-            Self::define_tool::<CnpjInput>("get_company_by_cnpj", "Get detailed company info by CNPJ"),
-            Self::define_tool::<CompanySearchInput>("search_companies", "Search companies by name or CNPJ"),
-            Self::define_tool::<CpfInput>("format_companies_message", "Format companies for C2S message"),
-
+            Self::define_tool::<NameInput>(
+                "find_companies_by_name",
+                "Find companies by owner name",
+            ),
+            Self::define_tool::<NameInput>(
+                "analyze_company_portfolio",
+                "Aggregate company portfolio analysis",
+            ),
+            Self::define_tool::<CpfInput>(
+                "find_companies_by_cpf",
+                "Find all companies where CPF is partner (65M CNPJs)",
+            ),
+            Self::define_tool::<CnpjInput>(
+                "get_company_by_cnpj",
+                "Get detailed company info by CNPJ",
+            ),
+            Self::define_tool::<CompanySearchInput>(
+                "search_companies",
+                "Search companies by name or CNPJ",
+            ),
+            Self::define_tool::<CpfInput>(
+                "format_companies_message",
+                "Format companies for C2S message",
+            ),
             // Tier (2)
-            Self::define_tool::<TierCalcInput>("calculate_lead_tier", "Calculate tier (platinum/gold/silver/bronze/risk)"),
-            Self::define_tool::<TierInput>("get_tier_recommendation", "Get recommendation for a tier"),
-
+            Self::define_tool::<TierCalcInput>(
+                "calculate_lead_tier",
+                "Calculate tier (platinum/gold/silver/bronze/risk)",
+            ),
+            Self::define_tool::<TierInput>(
+                "get_tier_recommendation",
+                "Get recommendation for a tier",
+            ),
             // Search (5)
             Self::define_tool::<WebSearchInput>("search_web", "General web search"),
-            Self::define_tool::<SearchPersonInput>("search_person", "Person-focused search (LinkedIn, business)"),
-            Self::define_tool::<WebSearchInput>("search_news", "Search news and flag negative results"),
-            Self::define_tool::<WebInsightsInput>("generate_web_insights", "Generate insights from web/search/surnames"),
-            Self::define_tool::<AnalyzeLeadNameInput>("analyze_lead_name", "Comprehensive name analysis"),
-
+            Self::define_tool::<SearchPersonInput>(
+                "search_person",
+                "Person-focused search (LinkedIn, business)",
+            ),
+            Self::define_tool::<WebSearchInput>(
+                "search_news",
+                "Search news and flag negative results",
+            ),
+            Self::define_tool::<WebInsightsInput>(
+                "generate_web_insights",
+                "Generate insights from web/search/surnames",
+            ),
+            Self::define_tool::<AnalyzeLeadNameInput>(
+                "analyze_lead_name",
+                "Comprehensive name analysis",
+            ),
             // Twenty CRM (13)
-            Self::define_tool::<TwentyCreateLeadInput>("twenty_create_lead", "Create lead in Twenty CRM (auto-routes by tier)"),
-            Self::define_tool::<TwentyUpdateLeadInput>("twenty_update_lead", "Update existing Twenty lead"),
-            Self::define_tool::<TwentyGetLeadInput>("twenty_get_lead", "Fetch lead by ID (supports multi-workspace)"),
-            Self::define_tool::<TwentyRouteInput>("twenty_route_lead", "Route lead to workspace by tier"),
-            Self::define_tool::<TwentyDelegateInput>("twenty_delegate_lead", "Delegate lead with expiration tracking"),
-            Self::define_tool::<TwentyBulkInput>("twenty_bulk_import", "Import multiple leads with deduplication"),
-            Self::define_tool::<TwentyStatsInput>("twenty_get_pipeline_stats", "Pipeline stats (leads by tier/status)"),
-            Self::define_tool::<TwentyBrokerStatsInput>("twenty_get_broker_stats", "Broker performance stats"),
-            Self::define_tool::<TwentyBrokerStatsInput>("twenty_get_adoption_metrics", "Team adoption metrics"),
-            Self::define_tool::<TwentySlaInput>("twenty_check_sla_violations", "Find SLA violations"),
-            Self::define_tool::<TwentyDelegationExpiryInput>("twenty_check_delegation_expiry", "Find expiring delegations"),
-            Self::define_tool::<TwentyIntentInput>("twenty_calculate_intent_signal", "Calculate intent signal from activity"),
-            Self::define_tool::<TwentyNextActionInput>("twenty_get_next_action", "Recommended next action for lead"),
+            Self::define_tool::<TwentyCreateLeadInput>(
+                "twenty_create_lead",
+                "Create lead in Twenty CRM (auto-routes by tier)",
+            ),
+            Self::define_tool::<TwentyUpdateLeadInput>(
+                "twenty_update_lead",
+                "Update existing Twenty lead",
+            ),
+            Self::define_tool::<TwentyGetLeadInput>(
+                "twenty_get_lead",
+                "Fetch lead by ID (supports multi-workspace)",
+            ),
+            Self::define_tool::<TwentyRouteInput>(
+                "twenty_route_lead",
+                "Route lead to workspace by tier",
+            ),
+            Self::define_tool::<TwentyDelegateInput>(
+                "twenty_delegate_lead",
+                "Delegate lead with expiration tracking",
+            ),
+            Self::define_tool::<TwentyBulkInput>(
+                "twenty_bulk_import",
+                "Import multiple leads with deduplication",
+            ),
+            Self::define_tool::<TwentyStatsInput>(
+                "twenty_get_pipeline_stats",
+                "Pipeline stats (leads by tier/status)",
+            ),
+            Self::define_tool::<TwentyBrokerStatsInput>(
+                "twenty_get_broker_stats",
+                "Broker performance stats",
+            ),
+            Self::define_tool::<TwentyBrokerStatsInput>(
+                "twenty_get_adoption_metrics",
+                "Team adoption metrics",
+            ),
+            Self::define_tool::<TwentySlaInput>(
+                "twenty_check_sla_violations",
+                "Find SLA violations",
+            ),
+            Self::define_tool::<TwentyDelegationExpiryInput>(
+                "twenty_check_delegation_expiry",
+                "Find expiring delegations",
+            ),
+            Self::define_tool::<TwentyIntentInput>(
+                "twenty_calculate_intent_signal",
+                "Calculate intent signal from activity",
+            ),
+            Self::define_tool::<TwentyNextActionInput>(
+                "twenty_get_next_action",
+                "Recommended next action for lead",
+            ),
         ]
     }
 
@@ -728,7 +881,11 @@ impl McpServer {
             Value::Object(obj) => obj,
             _ => serde_json::Map::new(),
         };
-        Tool::new(name.to_string(), description.to_string(), Arc::new(schema_obj))
+        Tool::new(
+            name.to_string(),
+            description.to_string(),
+            Arc::new(schema_obj),
+        )
     }
 
     // ─── Tool dispatcher ──────────────────────────────────────────
@@ -783,7 +940,7 @@ impl McpServer {
             "forward_c2s_lead" => self.handle_forward_c2s_lead(&args).await,
             "search_c2s_by_phone" => self.handle_search_c2s_by_phone(&args).await,
             "search_c2s_by_email" => self.handle_search_c2s_by_email(&args).await,
-            "mark_c2s_interacted" => self.stub_tool(name, &args),
+            "mark_c2s_interacted" => self.handle_mark_c2s_interacted(&args).await,
             "get_c2s_tags" => self.handle_get_c2s_tags().await,
             "add_c2s_lead_tag" => self.handle_add_c2s_lead_tag(&args).await,
 
@@ -823,7 +980,9 @@ impl McpServer {
             "twenty_get_broker_stats" => self.handle_twenty_get_broker_stats(&args).await,
             "twenty_get_adoption_metrics" => self.handle_twenty_get_pipeline_stats(&args).await,
             "twenty_check_sla_violations" => self.handle_twenty_check_sla_violations(&args).await,
-            "twenty_check_delegation_expiry" => self.handle_twenty_check_delegation_expiry(&args).await,
+            "twenty_check_delegation_expiry" => {
+                self.handle_twenty_check_delegation_expiry(&args).await
+            }
             "twenty_calculate_intent_signal" => self.handle_twenty_intent(&args),
             "twenty_get_next_action" => self.handle_twenty_next_action(&args),
 
@@ -852,16 +1011,19 @@ impl McpServer {
             return json!({ "success": false, "error": "lead_id or phone required" });
         }
 
-        let row = sqlx::query_as::<_, (
-            String,                          // lead_id
-            Option<String>,                  // customer_name
-            Option<String>,                  // customer_phone
-            Option<String>,                  // customer_email
-            Option<String>,                  // enrichment_status
-            Option<String>,                  // cpf
-            Option<uuid::Uuid>,              // party_id
-            Option<chrono::NaiveDateTime>,   // received_at
-        )>(
+        let row = sqlx::query_as::<
+            _,
+            (
+                String,                        // lead_id
+                Option<String>,                // customer_name
+                Option<String>,                // customer_phone
+                Option<String>,                // customer_email
+                Option<String>,                // enrichment_status
+                Option<String>,                // cpf
+                Option<uuid::Uuid>,            // party_id
+                Option<chrono::NaiveDateTime>, // received_at
+            ),
+        >(
             r#"SELECT lead_id, customer_name, customer_phone, customer_email,
                       enrichment_status, cpf, party_id, received_at
                FROM analytics.c2s_leads
@@ -899,13 +1061,25 @@ impl McpServer {
         let seller_id = args.get("seller_id").and_then(|v| v.as_str());
         let date_from = args.get("date_from").and_then(|v| v.as_str());
         let date_to = args.get("date_to").and_then(|v| v.as_str());
-        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20).min(100) as i64;
+        let limit = args
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(20)
+            .min(100) as i64;
         let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as i64;
 
-        let rows = sqlx::query_as::<_, (
-            String, Option<String>, Option<String>, Option<String>,
-            Option<String>, Option<String>, Option<chrono::NaiveDateTime>,
-        )>(
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<chrono::NaiveDateTime>,
+            ),
+        >(
             r#"SELECT lead_id, customer_name, customer_phone, customer_email,
                       enrichment_status, cpf, received_at
                FROM analytics.c2s_leads
@@ -925,20 +1099,25 @@ impl McpServer {
 
         match rows {
             Ok(rows) => {
-                let leads: Vec<Value> = rows.iter().map(|(lid, name, ph, email, st, cpf, recv)| {
-                    json!({
-                        "lead_id": lid,
-                        "customer_name": name,
-                        "customer_phone": ph,
-                        "customer_email": email,
-                        "enrichment_status": st,
-                        "cpf": cpf,
-                        "received_at": recv.map(|d| d.to_string()),
+                let leads: Vec<Value> = rows
+                    .iter()
+                    .map(|(lid, name, ph, email, st, cpf, recv)| {
+                        json!({
+                            "lead_id": lid,
+                            "customer_name": name,
+                            "customer_phone": ph,
+                            "customer_email": email,
+                            "enrichment_status": st,
+                            "cpf": cpf,
+                            "received_at": recv.map(|d| d.to_string()),
+                        })
                     })
-                }).collect();
+                    .collect();
                 let mut result = json!({ "success": true, "count": leads.len(), "leads": leads });
                 if seller_id.is_some() {
-                    result["note"] = json!("seller_id filter requires C2S API — use fetch_c2s_leads tool instead");
+                    result["note"] = json!(
+                        "seller_id filter requires C2S API — use fetch_c2s_leads tool instead"
+                    );
                 }
                 result
             }
@@ -970,7 +1149,11 @@ impl McpServer {
 
         match row {
             Ok((total, completed, partial, failed, pending, processing)) => {
-                let rate = if total > 0 { (completed as f64 / total as f64) * 100.0 } else { 0.0 };
+                let rate = if total > 0 {
+                    (completed as f64 / total as f64) * 100.0
+                } else {
+                    0.0
+                };
                 json!({
                     "success": true,
                     "total": total,
@@ -1001,7 +1184,11 @@ impl McpServer {
 
         match row {
             Ok((total, completed)) => {
-                let rate = if total > 0 { (completed as f64 / total as f64) * 100.0 } else { 0.0 };
+                let rate = if total > 0 {
+                    (completed as f64 / total as f64) * 100.0
+                } else {
+                    0.0
+                };
                 json!({
                     "success": true,
                     "rate": format!("{:.1}", rate),
@@ -1016,7 +1203,8 @@ impl McpServer {
 
     async fn handle_enrichment_health(&self, args: &Value) -> Value {
         let state = require_state!(self, "get_enrichment_health");
-        let threshold = args.get("threshold")
+        let threshold = args
+            .get("threshold")
             .and_then(|v| v.as_f64())
             .unwrap_or(80.0);
 
@@ -1031,7 +1219,11 @@ impl McpServer {
 
         match row {
             Ok((total, completed)) => {
-                let rate = if total > 0 { (completed as f64 / total as f64) * 100.0 } else { 0.0 };
+                let rate = if total > 0 {
+                    (completed as f64 / total as f64) * 100.0
+                } else {
+                    0.0
+                };
                 let healthy = rate >= threshold;
                 json!({
                     "success": true,
@@ -1052,7 +1244,11 @@ impl McpServer {
 
     fn handle_validate_cpf(&self, args: &Value) -> Value {
         let cpf = args.get("cpf").and_then(|v| v.as_str()).unwrap_or("");
-        let digits: Vec<u8> = cpf.chars().filter(|c| c.is_ascii_digit()).map(|c| c as u8 - b'0').collect();
+        let digits: Vec<u8> = cpf
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .map(|c| c as u8 - b'0')
+            .collect();
         if digits.len() != 11 {
             return json!({ "success": true, "cpf": cpf, "isValid": false, "reason": "CPF must have 11 digits" });
         }
@@ -1061,10 +1257,14 @@ impl McpServer {
         if all_same {
             return json!({ "success": true, "cpf": cpf, "isValid": false, "reason": "All digits are the same" });
         }
-        let check1: u32 = (0..9).map(|i| digits[i] as u32 * (10 - i as u32)).sum::<u32>();
+        let check1: u32 = (0..9)
+            .map(|i| digits[i] as u32 * (10 - i as u32))
+            .sum::<u32>();
         let rem1 = (check1 * 10) % 11;
         let d1 = if rem1 == 10 { 0 } else { rem1 as u8 };
-        let check2: u32 = (0..10).map(|i| digits[i] as u32 * (11 - i as u32)).sum::<u32>();
+        let check2: u32 = (0..10)
+            .map(|i| digits[i] as u32 * (11 - i as u32))
+            .sum::<u32>();
         let rem2 = (check2 * 10) % 11;
         let d2 = if rem2 == 10 { 0 } else { rem2 as u8 };
         let valid = d1 == digits[9] && d2 == digits[10];
@@ -1083,15 +1283,17 @@ impl McpServer {
         // Try phone discovery first (5-tier cascade)
         if let Some(phone) = phone {
             match state.discovery.find_cpf_by_phone(phone, name).await {
-                Ok(Some(result)) => return json!({
-                    "success": true,
-                    "cpf": result.cpf,
-                    "source": result.source,
-                    "foundName": result.found_name,
-                    "nameMatches": result.name_matches,
-                    "matchScore": result.match_score,
-                    "matchMethod": result.match_method
-                }),
+                Ok(Some(result)) => {
+                    return json!({
+                        "success": true,
+                        "cpf": result.cpf,
+                        "source": result.source,
+                        "foundName": result.found_name,
+                        "nameMatches": result.name_matches,
+                        "matchScore": result.match_score,
+                        "matchMethod": result.match_method
+                    })
+                }
                 Ok(None) => {} // fall through to email/name
                 Err(e) => return json!({ "success": false, "error": e.to_string() }),
             }
@@ -1100,15 +1302,17 @@ impl McpServer {
         // Try email discovery (2-tier cascade)
         if let Some(email) = email {
             match state.discovery.find_cpf_by_email(email, name).await {
-                Ok(Some(result)) => return json!({
-                    "success": true,
-                    "cpf": result.cpf,
-                    "source": result.source,
-                    "foundName": result.found_name,
-                    "nameMatches": result.name_matches,
-                    "matchScore": result.match_score,
-                    "matchMethod": result.match_method
-                }),
+                Ok(Some(result)) => {
+                    return json!({
+                        "success": true,
+                        "cpf": result.cpf,
+                        "source": result.source,
+                        "foundName": result.found_name,
+                        "nameMatches": result.name_matches,
+                        "matchScore": result.match_score,
+                        "matchMethod": result.match_method
+                    })
+                }
                 Ok(None) => {}
                 Err(e) => return json!({ "success": false, "error": e.to_string() }),
             }
@@ -1117,13 +1321,15 @@ impl McpServer {
         // Try name-only DuckDB search as last resort
         if let Some(name) = name {
             match state.discovery.find_cpf_by_name_duckdb(name).await {
-                Ok(Some(result)) => return json!({
-                    "success": true,
-                    "cpf": result.cpf,
-                    "source": result.source,
-                    "foundName": result.found_name,
-                    "matchScore": result.match_score
-                }),
+                Ok(Some(result)) => {
+                    return json!({
+                        "success": true,
+                        "cpf": result.cpf,
+                        "source": result.source,
+                        "foundName": result.found_name,
+                        "matchScore": result.match_score
+                    })
+                }
                 Ok(None) => {}
                 Err(e) => return json!({ "success": false, "error": e.to_string() }),
             }
@@ -1159,7 +1365,9 @@ impl McpServer {
                 "foundName": result.found_name,
                 "matchScore": result.match_score
             }),
-            Ok(None) => json!({ "success": true, "found": false, "message": "No CPF found for this name" }),
+            Ok(None) => {
+                json!({ "success": true, "found": false, "message": "No CPF found for this name" })
+            }
             Err(e) => json!({ "success": false, "error": e.to_string() }),
         }
     }
@@ -1183,7 +1391,9 @@ impl McpServer {
         // Step 2: Fetch full Work API data
         let work_data = match state.work_api.fetch_all_modules(cpf).await {
             Ok(d) => d,
-            Err(e) => return json!({ "success": false, "cpf": cpf, "error": format!("Work API fetch failed: {}", e) }),
+            Err(e) => {
+                return json!({ "success": false, "cpf": cpf, "error": format!("Work API fetch failed: {}", e) })
+            }
         };
 
         // Step 3: Save to core.parties via EnrichmentStorage
@@ -1195,12 +1405,11 @@ impl McpServer {
                 "source": discovery_result.source,
                 "foundName": discovery_result.found_name
             }),
-            Err(e) => json!({ "success": false, "cpf": cpf, "error": format!("Storage failed: {}", e) }),
+            Err(e) => {
+                json!({ "success": false, "cpf": cpf, "error": format!("Storage failed: {}", e) })
+            }
         }
     }
-
-
-
 
     // ─── Enrichment Tool Handlers (RML-1108) ────────────────────
 
@@ -1217,10 +1426,17 @@ impl McpServer {
 
         // Step 1: Discover CPF(s)
         let cpf_result = match crate::enrichment::find_cpf_via_diretrix(
-            phone, email, &state.config, name,
-        ).await {
+            phone,
+            email,
+            &state.config,
+            name,
+        )
+        .await
+        {
             Ok(r) => r,
-            Err(e) => return json!({ "success": false, "error": format!("CPF discovery failed: {}", e) }),
+            Err(e) => {
+                return json!({ "success": false, "error": format!("CPF discovery failed: {}", e) })
+            }
         };
 
         if cpf_result.cpfs.is_empty() {
@@ -1229,10 +1445,15 @@ impl McpServer {
 
         // Step 2: Enrich with Work API
         let enriched_data = match crate::enrichment::enrich_cpfs_with_work_api(
-            &cpf_result.cpfs, &state.config,
-        ).await {
+            &cpf_result.cpfs,
+            &state.config,
+        )
+        .await
+        {
             Ok(d) => d,
-            Err(e) => return json!({ "success": false, "cpfs": cpf_result.cpfs, "error": format!("Work API enrichment failed: {}", e) }),
+            Err(e) => {
+                return json!({ "success": false, "cpfs": cpf_result.cpfs, "error": format!("Work API enrichment failed: {}", e) })
+            }
         };
 
         // Step 3: Format message
@@ -1246,7 +1467,10 @@ impl McpServer {
 
         // Step 3b: Append company data from Meilisearch
         if state.meilisearch.is_enabled() && !cpf_result.cpfs.is_empty() {
-            let summary = state.meilisearch.find_companies_by_cpf(&cpf_result.cpfs[0]).await;
+            let summary = state
+                .meilisearch
+                .find_companies_by_cpf(&cpf_result.cpfs[0])
+                .await;
             if summary.total_companies > 0 {
                 let company_msg = MeilisearchCompanyService::format_companies_for_message(&summary);
                 if !company_msg.is_empty() {
@@ -1270,8 +1494,13 @@ impl McpServer {
 
         // Step 5: Store in database
         let stored_ids = match crate::enrichment::store_enriched_data(
-            &state.db, &cpf_result.cpfs, &enriched_data, lead_id,
-        ).await {
+            &state.db,
+            &cpf_result.cpfs,
+            &enriched_data,
+            lead_id,
+        )
+        .await
+        {
             Ok(ids) => ids,
             Err(e) => {
                 tracing::warn!("Failed to store enriched data: {}", e);
@@ -1281,7 +1510,11 @@ impl McpServer {
 
         // Step 5b: Update c2s_leads enrichment status
         if let Some(lid) = lead_id {
-            let status = if !cpf_result.cpfs.is_empty() && !enriched_data.is_empty() { "completed" } else { "partial" };
+            let status = if !cpf_result.cpfs.is_empty() && !enriched_data.is_empty() {
+                "completed"
+            } else {
+                "partial"
+            };
             let _ = sqlx::query(
                 "UPDATE analytics.c2s_leads SET enrichment_status = $1, cpf = $2, party_id = $3, enriched_at = now(), updated_at = now() WHERE lead_id = $4"
             )
@@ -1315,7 +1548,8 @@ impl McpServer {
         let mut success_count = 0u32;
         let mut fail_count = 0u32;
 
-        for lead in leads.iter().take(50) { // Cap at 50 to prevent abuse
+        for lead in leads.iter().take(50) {
+            // Cap at 50 to prevent abuse
             let phone = lead.get("phone").and_then(|v| v.as_str());
             let email = lead.get("email").and_then(|v| v.as_str());
             let name = lead.get("name").and_then(|v| v.as_str());
@@ -1323,20 +1557,28 @@ impl McpServer {
 
             if phone.is_none() && email.is_none() {
                 fail_count += 1;
-                results.push(json!({ "lead_id": lead_id, "success": false, "error": "no phone or email" }));
+                results.push(
+                    json!({ "lead_id": lead_id, "success": false, "error": "no phone or email" }),
+                );
                 continue;
             }
 
             // Discovery
-            match state.discovery.find_cpf_by_phone(
-                phone.unwrap_or(""), name,
-            ).await {
+            match state
+                .discovery
+                .find_cpf_by_phone(phone.unwrap_or(""), name)
+                .await
+            {
                 Ok(Some(cpf_result)) => {
                     // Enrich
                     match state.work_api.fetch_all_modules(&cpf_result.cpf).await {
                         Ok(work_data) => {
                             // Store
-                            let party_id = state.storage.store_enriched_person(&cpf_result.cpf, &work_data).await.ok();
+                            let party_id = state
+                                .storage
+                                .store_enriched_person(&cpf_result.cpf, &work_data)
+                                .await
+                                .ok();
                             success_count += 1;
                             results.push(json!({
                                 "lead_id": lead_id,
@@ -1353,11 +1595,15 @@ impl McpServer {
                 }
                 Ok(None) => {
                     fail_count += 1;
-                    results.push(json!({ "lead_id": lead_id, "success": false, "error": "CPF not found" }));
+                    results.push(
+                        json!({ "lead_id": lead_id, "success": false, "error": "CPF not found" }),
+                    );
                 }
                 Err(e) => {
                     fail_count += 1;
-                    results.push(json!({ "lead_id": lead_id, "success": false, "error": e.to_string() }));
+                    results.push(
+                        json!({ "lead_id": lead_id, "success": false, "error": e.to_string() }),
+                    );
                 }
             }
 
@@ -1377,7 +1623,8 @@ impl McpServer {
 
     async fn handle_retry_failed(&self, args: &Value) -> Value {
         let state = require_state!(self, "retry_failed");
-        let statuses: Vec<&str> = args.get("statuses")
+        let statuses: Vec<&str> = args
+            .get("statuses")
             .and_then(|v| v.as_array())
             .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
             .unwrap_or_else(|| vec!["failed", "partial", "unenriched"]);
@@ -1408,8 +1655,14 @@ impl McpServer {
             if let Some(ref p) = phone {
                 match state.discovery.find_cpf_by_phone(p, name.as_deref()).await {
                     Ok(Some(cpf_result)) => {
-                        if let Ok(work_data) = state.work_api.fetch_all_modules(&cpf_result.cpf).await {
-                            let party_id = state.storage.store_enriched_person(&cpf_result.cpf, &work_data).await.ok();
+                        if let Ok(work_data) =
+                            state.work_api.fetch_all_modules(&cpf_result.cpf).await
+                        {
+                            let party_id = state
+                                .storage
+                                .store_enriched_person(&cpf_result.cpf, &work_data)
+                                .await
+                                .ok();
                             let _ = sqlx::query(
                                 "UPDATE analytics.c2s_leads SET enrichment_status = 'completed', cpf = $1, party_id = $2, enriched_at = now(), retry_count = COALESCE(retry_count, 0) + 1, updated_at = now() WHERE lead_id = $3"
                             )
@@ -1443,7 +1696,6 @@ impl McpServer {
             "statuses": statuses
         })
     }
-
 
     // ─── Web Search Tool Handlers (RML-1112) ────────────────────
 
@@ -1484,8 +1736,16 @@ impl McpServer {
     async fn handle_analyze_lead(&self, args: &Value) -> Value {
         let state = require_state!(self, "analyze_lead");
         let input = crate::lead_analysis::LeadAnalysisInput {
-            lead_id: args.get("lead_id").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
-            name: args.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            lead_id: args
+                .get("lead_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            name: args
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             email: args.get("email").and_then(|v| v.as_str()).map(String::from),
             phone: args.get("phone").and_then(|v| v.as_str()).map(String::from),
             cpf: args.get("cpf").and_then(|v| v.as_str()).map(String::from),
@@ -1520,7 +1780,9 @@ impl McpServer {
                 "discovered": serde_json::to_value(&result.discovered).unwrap_or(Value::Null),
                 "recommendation": serde_json::to_value(&result.recommendation).unwrap_or(Value::Null)
             }),
-            None => json!({ "success": true, "cached": false, "message": "No cached analysis found — use analyze_lead to generate" }),
+            None => {
+                json!({ "success": true, "cached": false, "message": "No cached analysis found — use analyze_lead to generate" })
+            }
         }
     }
 
@@ -1528,8 +1790,12 @@ impl McpServer {
 
     async fn handle_generate_report_extended(&self, args: &Value) -> Value {
         let state = require_state!(self, "generate_report");
-        let format = args.get("format").and_then(|v| v.as_str()).unwrap_or("html");
-        let persons: Vec<crate::report::ReportPerson> = args.get("persons")
+        let format = args
+            .get("format")
+            .and_then(|v| v.as_str())
+            .unwrap_or("html");
+        let persons: Vec<crate::report::ReportPerson> = args
+            .get("persons")
             .or_else(|| args.get("cpfs"))
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
@@ -1537,12 +1803,22 @@ impl McpServer {
             return json!({ "success": false, "error": "persons array is required" });
         }
         let options = crate::report::ReportOptions {
-            title: args.get("title").and_then(|v| v.as_str()).unwrap_or("Lead Report").to_string(),
-            subtitle: args.get("subtitle").and_then(|v| v.as_str()).map(String::from),
+            title: args
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Lead Report")
+                .to_string(),
+            subtitle: args
+                .get("subtitle")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             classification: "Confidencial - Uso Interno".to_string(),
             include_contacts: true,
             include_income: true,
-            output_dir: args.get("output_dir").and_then(|v| v.as_str()).map(String::from),
+            output_dir: args
+                .get("output_dir")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         };
         let result = match format {
             "pdf" => state.report.generate_pdf(&persons, &options).await,
@@ -1566,17 +1842,26 @@ impl McpServer {
             return json!({ "success": false, "error": "Twenty CRM is not enabled" });
         }
         let input = crate::twenty::TwentyLeadInput {
-            name: args.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            name: args
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             phone: args.get("phone").and_then(|v| v.as_str()).map(String::from),
             email: args.get("email").and_then(|v| v.as_str()).map(String::from),
-            source: args.get("source").and_then(|v| v.as_str()).map(String::from),
+            source: args
+                .get("source")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             tier: args.get("tier").and_then(|v| v.as_str()).map(String::from),
             score: args.get("score").and_then(|v| v.as_i64()).map(|v| v as i32),
             cpf: args.get("cpf").and_then(|v| v.as_str()).map(String::from),
             metadata: args.get("metadata").cloned(),
         };
         match state.twenty.create_lead(&input).await {
-            Ok(lead) => json!({ "success": true, "lead": serde_json::to_value(&lead).unwrap_or(Value::Null) }),
+            Ok(lead) => {
+                json!({ "success": true, "lead": serde_json::to_value(&lead).unwrap_or(Value::Null) })
+            }
             Err(e) => json!({ "success": false, "error": e }),
         }
     }
@@ -1641,7 +1926,9 @@ impl McpServer {
             Err(e) => return json!({ "success": false, "error": format!("Invalid input: {}", e) }),
         };
         match state.twenty.bulk_import(&input).await {
-            Ok(result) => json!({ "success": true, "result": serde_json::to_value(&result).unwrap_or(Value::Null) }),
+            Ok(result) => {
+                json!({ "success": true, "result": serde_json::to_value(&result).unwrap_or(Value::Null) })
+            }
             Err(e) => json!({ "success": false, "error": e }),
         }
     }
@@ -1653,7 +1940,9 @@ impl McpServer {
         }
         let workspace = parse_workspace(args.get("workspace").and_then(|v| v.as_str()));
         match state.twenty.get_pipeline_stats(workspace).await {
-            Ok(stats) => json!({ "success": true, "stats": serde_json::to_value(&stats).unwrap_or(Value::Null) }),
+            Ok(stats) => {
+                json!({ "success": true, "stats": serde_json::to_value(&stats).unwrap_or(Value::Null) })
+            }
             Err(e) => json!({ "success": false, "error": e }),
         }
     }
@@ -1665,7 +1954,9 @@ impl McpServer {
         }
         let workspace = parse_workspace(args.get("workspace").and_then(|v| v.as_str()));
         match state.twenty.get_broker_stats(workspace).await {
-            Ok(stats) => json!({ "success": true, "brokers": serde_json::to_value(&stats).unwrap_or(Value::Null) }),
+            Ok(stats) => {
+                json!({ "success": true, "brokers": serde_json::to_value(&stats).unwrap_or(Value::Null) })
+            }
             Err(e) => json!({ "success": false, "error": e }),
         }
     }
@@ -1677,7 +1968,9 @@ impl McpServer {
         }
         let workspace = parse_workspace(args.get("workspace").and_then(|v| v.as_str()));
         match state.twenty.check_sla_violations(workspace).await {
-            Ok(violations) => json!({ "success": true, "violations": serde_json::to_value(&violations).unwrap_or(Value::Null), "count": violations.len() }),
+            Ok(violations) => {
+                json!({ "success": true, "violations": serde_json::to_value(&violations).unwrap_or(Value::Null), "count": violations.len() })
+            }
             Err(e) => json!({ "success": false, "error": e }),
         }
     }
@@ -1701,20 +1994,24 @@ impl McpServer {
         let state = require_state!(self, "fetch_c2s_leads");
         let lead_id = args.get("lead_id").and_then(|v| v.as_str());
         match lead_id {
-            Some(id) => {
-                match state.c2s.fetch_lead(id).await {
-                    Ok(resp) => json!({ "success": true, "lead": serde_json::to_value(&resp.data).unwrap_or(Value::Null) }),
-                    Err(e) => json!({ "success": false, "error": e.to_string() }),
+            Some(id) => match state.c2s.fetch_lead(id).await {
+                Ok(resp) => {
+                    json!({ "success": true, "lead": serde_json::to_value(&resp.data).unwrap_or(Value::Null) })
                 }
+                Err(e) => json!({ "success": false, "error": e.to_string() }),
+            },
+            None => {
+                json!({ "success": false, "error": "lead_id is required (C2S API does not support listing — use list_leads for DB query)" })
             }
-            None => json!({ "success": false, "error": "lead_id is required (C2S API does not support listing — use list_leads for DB query)" }),
         }
     }
 
     async fn handle_get_c2s_sellers(&self) -> Value {
         let state = require_state!(self, "get_c2s_sellers");
         match state.c2s_extended.list_sellers().await {
-            Ok(sellers) => json!({ "success": true, "sellers": serde_json::to_value(&sellers).unwrap_or(Value::Null) }),
+            Ok(sellers) => {
+                json!({ "success": true, "sellers": serde_json::to_value(&sellers).unwrap_or(Value::Null) })
+            }
             Err(e) => json!({ "success": false, "error": e }),
         }
     }
@@ -1745,7 +2042,10 @@ impl McpServer {
             Some(s) if !s.is_empty() => s,
             _ => return json!({ "success": false, "error": "seller_id is required" }),
         };
-        let message = args.get("message").and_then(|v| v.as_str()).map(String::from);
+        let message = args
+            .get("message")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let input = crate::c2s_extended::ForwardInput {
             seller_id: seller_id.to_string(),
             message,
@@ -1763,7 +2063,9 @@ impl McpServer {
             _ => return json!({ "success": false, "error": "phone is required" }),
         };
         match state.c2s_extended.search_by_phone(phone).await {
-            Ok(results) => json!({ "success": true, "results": serde_json::to_value(&results).unwrap_or(Value::Null) }),
+            Ok(results) => {
+                json!({ "success": true, "results": serde_json::to_value(&results).unwrap_or(Value::Null) })
+            }
             Err(e) => json!({ "success": false, "error": e }),
         }
     }
@@ -1775,7 +2077,23 @@ impl McpServer {
             _ => return json!({ "success": false, "error": "email is required" }),
         };
         match state.c2s_extended.search_by_email(email).await {
-            Ok(results) => json!({ "success": true, "results": serde_json::to_value(&results).unwrap_or(Value::Null) }),
+            Ok(results) => {
+                json!({ "success": true, "results": serde_json::to_value(&results).unwrap_or(Value::Null) })
+            }
+            Err(e) => json!({ "success": false, "error": e }),
+        }
+    }
+
+    async fn handle_mark_c2s_interacted(&self, args: &Value) -> Value {
+        let state = require_state!(self, "mark_c2s_interacted");
+        let lead_id = match args.get("lead_id").and_then(|v| v.as_str()) {
+            Some(id) if !id.is_empty() => id,
+            _ => return json!({ "success": false, "error": "lead_id is required" }),
+        };
+        match state.c2s_extended.mark_as_interacted(lead_id).await {
+            Ok(()) => {
+                json!({ "success": true, "lead_id": lead_id, "message": "Lead marked as interacted" })
+            }
             Err(e) => json!({ "success": false, "error": e }),
         }
     }
@@ -1783,7 +2101,9 @@ impl McpServer {
     async fn handle_get_c2s_tags(&self) -> Value {
         let state = require_state!(self, "get_c2s_tags");
         match state.c2s_extended.list_tags().await {
-            Ok(tags) => json!({ "success": true, "tags": serde_json::to_value(&tags).unwrap_or(Value::Null) }),
+            Ok(tags) => {
+                json!({ "success": true, "tags": serde_json::to_value(&tags).unwrap_or(Value::Null) })
+            }
             Err(e) => json!({ "success": false, "error": e }),
         }
     }
@@ -1811,7 +2131,9 @@ impl McpServer {
             _ => return json!({ "success": false, "error": "lead_id is required" }),
         };
         match state.c2s.fetch_lead(lead_id).await {
-            Ok(resp) => json!({ "success": true, "lead": serde_json::to_value(&resp.data).unwrap_or(Value::Null) }),
+            Ok(resp) => {
+                json!({ "success": true, "lead": serde_json::to_value(&resp.data).unwrap_or(Value::Null) })
+            }
             Err(e) => json!({ "success": false, "error": e.to_string() }),
         }
     }
@@ -1836,20 +2158,26 @@ impl McpServer {
 
     async fn handle_get_company_by_cnpj(&self, args: &Value) -> Value {
         let state = require_state!(self, "get_company_by_cnpj");
-        let cnpj = args.get("cnpj").and_then(|v| v.as_str())
+        let cnpj = args
+            .get("cnpj")
+            .and_then(|v| v.as_str())
             .unwrap_or_else(|| args.get("query").and_then(|v| v.as_str()).unwrap_or(""));
         if cnpj.is_empty() {
             return json!({ "success": false, "error": "cnpj is required" });
         }
         match state.meilisearch.get_company_by_cnpj(cnpj).await {
-            Some(company) => json!({ "success": true, "company": serde_json::to_value(&company).unwrap_or(Value::Null) }),
+            Some(company) => {
+                json!({ "success": true, "company": serde_json::to_value(&company).unwrap_or(Value::Null) })
+            }
             None => json!({ "success": true, "found": false, "message": "Company not found" }),
         }
     }
 
     async fn handle_search_companies(&self, args: &Value) -> Value {
         let state = require_state!(self, "search_companies");
-        let query = args.get("query").and_then(|v| v.as_str())
+        let query = args
+            .get("query")
+            .and_then(|v| v.as_str())
             .or_else(|| args.get("name").and_then(|v| v.as_str()))
             .unwrap_or("");
         if query.is_empty() {
@@ -1895,7 +2223,9 @@ impl McpServer {
                 "totalBuiltArea": summary.total_built_area,
                 "properties": serde_json::to_value(&summary.properties).unwrap_or(Value::Null)
             }),
-            None => json!({ "success": true, "cpf": cpf, "found": false, "message": "No properties found for this CPF" }),
+            None => {
+                json!({ "success": true, "cpf": cpf, "found": false, "message": "No properties found for this CPF" })
+            }
         }
     }
 
@@ -1910,7 +2240,9 @@ impl McpServer {
                 let message = IbviPropertyService::format_for_message(&summary);
                 json!({ "success": true, "cpf": cpf, "message": message, "totalProperties": summary.total_properties })
             }
-            None => json!({ "success": true, "cpf": cpf, "found": false, "message": "No properties found" }),
+            None => {
+                json!({ "success": true, "cpf": cpf, "found": false, "message": "No properties found" })
+            }
         }
     }
 
@@ -1947,26 +2279,47 @@ impl McpServer {
     }
 
     fn handle_score_quality(&self, args: &Value) -> Value {
-        use crate::scoring::quality::{LeadQualityInput, Address, calculate_lead_quality_score};
+        use crate::scoring::quality::{calculate_lead_quality_score, Address, LeadQualityInput};
         let input = LeadQualityInput {
             name: args.get("name").and_then(|v| v.as_str()).map(String::from),
             phone: args.get("phone").and_then(|v| v.as_str()).map(String::from),
             email: args.get("email").and_then(|v| v.as_str()).map(String::from),
             cpf: args.get("cpf").and_then(|v| v.as_str()).map(String::from),
-            enriched_name: args.get("enriched_name").and_then(|v| v.as_str()).map(String::from),
+            enriched_name: args
+                .get("enriched_name")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             income: args.get("income").and_then(|v| v.as_f64()),
             presumed_income: args.get("presumed_income").and_then(|v| v.as_f64()),
-            addresses: args.get("addresses").and_then(|v| v.as_array()).map(|arr| {
-                arr.iter().map(|a| Address {
-                    neighborhood: a.get("neighborhood").and_then(|v| v.as_str()).map(String::from),
-                    city: a.get("city").and_then(|v| v.as_str()).map(String::from),
-                    state: a.get("state").and_then(|v| v.as_str()).map(String::from),
-                }).collect()
-            }).unwrap_or_default(),
-            company_count: args.get("company_count").and_then(|v| v.as_u64()).map(|v| v as u32),
+            addresses: args
+                .get("addresses")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .map(|a| Address {
+                            neighborhood: a
+                                .get("neighborhood")
+                                .and_then(|v| v.as_str())
+                                .map(String::from),
+                            city: a.get("city").and_then(|v| v.as_str()).map(String::from),
+                            state: a.get("state").and_then(|v| v.as_str()).map(String::from),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            company_count: args
+                .get("company_count")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32),
             total_company_capital: args.get("total_company_capital").and_then(|v| v.as_f64()),
-            is_company_administrator: args.get("is_company_administrator").and_then(|v| v.as_bool()).unwrap_or(false),
-            has_real_estate_sector: args.get("has_real_estate_sector").and_then(|v| v.as_bool()).unwrap_or(false),
+            is_company_administrator: args
+                .get("is_company_administrator")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            has_real_estate_sector: args
+                .get("has_real_estate_sector")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
         };
         let result = calculate_lead_quality_score(&input);
         json!({
@@ -2042,7 +2395,13 @@ impl McpServer {
         }
         use crate::domain_analyzer::DomainAnalyzerService;
         let result = DomainAnalyzerService::analyze(email);
-        let level = if result.trust_score >= 70 { "high" } else if result.trust_score >= 40 { "medium" } else { "low" };
+        let level = if result.trust_score >= 70 {
+            "high"
+        } else if result.trust_score >= 40 {
+            "medium"
+        } else {
+            "low"
+        };
         json!({
             "success": true,
             "email": email,
@@ -2078,24 +2437,33 @@ impl McpServer {
     }
 
     fn handle_calculate_tier(&self, args: &Value) -> Value {
-        use crate::scoring::tier::{calculate_tier, TierEnrichmentData};
         use crate::scoring::quality::Address;
+        use crate::scoring::tier::{calculate_tier, TierEnrichmentData};
         let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
         let phone = args.get("phone").and_then(|v| v.as_str());
         let email = args.get("email").and_then(|v| v.as_str());
 
         let enrichment = TierEnrichmentData {
             income: args.get("income").and_then(|v| v.as_f64()),
-            addresses: args.get("neighborhood").and_then(|v| v.as_str()).map(|n| {
-                vec![Address {
-                    neighborhood: Some(n.to_string()),
-                    city: args.get("city").and_then(|v| v.as_str()).map(String::from),
-                    state: args.get("state").and_then(|v| v.as_str()).map(String::from),
-                }]
-            }).unwrap_or_default(),
-            property_count: args.get("property_count").and_then(|v| v.as_u64()).map(|v| v as u32),
+            addresses: args
+                .get("neighborhood")
+                .and_then(|v| v.as_str())
+                .map(|n| {
+                    vec![Address {
+                        neighborhood: Some(n.to_string()),
+                        city: args.get("city").and_then(|v| v.as_str()).map(String::from),
+                        state: args.get("state").and_then(|v| v.as_str()).map(String::from),
+                    }]
+                })
+                .unwrap_or_default(),
+            property_count: args
+                .get("property_count")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32),
             total_company_capital: args.get("total_company_capital").and_then(|v| v.as_f64()),
-            is_company_administrator: args.get("is_company_administrator").and_then(|v| v.as_bool()),
+            is_company_administrator: args
+                .get("is_company_administrator")
+                .and_then(|v| v.as_bool()),
         };
 
         let result = calculate_tier(name, phone, email, Some(&enrichment), None);
@@ -2115,13 +2483,32 @@ impl McpServer {
     }
 
     fn handle_tier_recommendation(&self, args: &Value) -> Value {
-        let tier = args.get("tier").and_then(|v| v.as_str()).unwrap_or("bronze");
+        let tier = args
+            .get("tier")
+            .and_then(|v| v.as_str())
+            .unwrap_or("bronze");
         let (action, title, description) = match tier.to_lowercase().as_str() {
-            "platinum" | "s" => ("priority", "Lead Premium", "Contato imediato — perfil de altíssimo valor. SLA: 2 horas."),
-            "gold" | "a" => ("priority", "Lead Alto Valor", "Contato prioritário. SLA: 24 horas."),
-            "silver" | "b" => ("qualify", "Lead Qualificado", "Qualificar interesse e agendar contato. SLA: 48 horas."),
+            "platinum" | "s" => (
+                "priority",
+                "Lead Premium",
+                "Contato imediato — perfil de altíssimo valor. SLA: 2 horas.",
+            ),
+            "gold" | "a" => (
+                "priority",
+                "Lead Alto Valor",
+                "Contato prioritário. SLA: 24 horas.",
+            ),
+            "silver" | "b" => (
+                "qualify",
+                "Lead Qualificado",
+                "Qualificar interesse e agendar contato. SLA: 48 horas.",
+            ),
             "bronze" | "c" => ("contact", "Lead Standard", "Contato padrão. SLA: 72 horas."),
-            "risk" => ("avoid", "Lead com Risco", "Verificar alertas antes de prosseguir."),
+            "risk" => (
+                "avoid",
+                "Lead com Risco",
+                "Verificar alertas antes de prosseguir.",
+            ),
             _ => ("contact", "Lead", "Contato padrão."),
         };
         json!({
@@ -2132,30 +2519,58 @@ impl McpServer {
     }
 
     fn handle_generate_report(&self, args: &Value) -> Value {
-        use crate::report::{ProfileReportService, ReportPerson, ReportOptions};
-        let persons: Vec<ReportPerson> = args.get("persons")
+        use crate::report::{ProfileReportService, ReportOptions, ReportPerson};
+        let persons: Vec<ReportPerson> = args
+            .get("persons")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().map(|p| ReportPerson {
-                name: p.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string(),
-                cpf: p.get("cpf").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                occupation: p.get("occupation").and_then(|v| v.as_str()).map(String::from),
-                company: p.get("company").and_then(|v| v.as_str()).map(String::from),
-                income: p.get("income").and_then(|v| v.as_f64()),
-                birth_date: None,
-                gender: None,
-                phones: vec![],
-                emails: vec![],
-                address: None,
-            }).collect())
+            .map(|arr| {
+                arr.iter()
+                    .map(|p| ReportPerson {
+                        name: p
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown")
+                            .to_string(),
+                        cpf: p
+                            .get("cpf")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        occupation: p
+                            .get("occupation")
+                            .and_then(|v| v.as_str())
+                            .map(String::from),
+                        company: p.get("company").and_then(|v| v.as_str()).map(String::from),
+                        income: p.get("income").and_then(|v| v.as_f64()),
+                        birth_date: None,
+                        gender: None,
+                        phones: vec![],
+                        emails: vec![],
+                        address: None,
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
-        let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("Report");
+        let title = args
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Report");
         let format = args.get("format").and_then(|v| v.as_str()).unwrap_or("md");
         let options = ReportOptions {
             title: title.to_string(),
-            subtitle: args.get("subtitle").and_then(|v| v.as_str()).map(String::from),
+            subtitle: args
+                .get("subtitle")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             classification: "Confidencial - Uso Interno".to_string(),
-            include_contacts: args.get("include_contacts").and_then(|v| v.as_bool()).unwrap_or(true),
-            include_income: args.get("include_income").and_then(|v| v.as_bool()).unwrap_or(true),
+            include_contacts: args
+                .get("include_contacts")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true),
+            include_income: args
+                .get("include_income")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true),
             output_dir: None,
         };
         let service = ProfileReportService;
@@ -2179,24 +2594,32 @@ impl McpServer {
         let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
         let phone = args.get("phone").and_then(|v| v.as_str());
         let parts: Vec<&str> = name.split_whitespace().collect();
-        let surnames: Vec<&str> = if parts.len() > 1 { parts[1..].to_vec() } else { vec![] };
+        let surnames: Vec<&str> = if parts.len() > 1 {
+            parts[1..].to_vec()
+        } else {
+            vec![]
+        };
 
         // Check notable families
         use crate::scoring::families::analyze_full_name;
         let analyses = analyze_full_name(name);
-        let notable: Vec<String> = analyses.iter()
+        let notable: Vec<String> = analyses
+            .iter()
             .filter(|a| a.is_notable_family)
             .map(|a| a.surname.clone())
             .collect();
-        let rare: Vec<String> = analyses.iter()
+        let rare: Vec<String> = analyses
+            .iter()
             .filter(|a| a.is_rare)
             .map(|a| a.surname.clone())
             .collect();
 
-        let is_international = phone.map(|p| {
-            let digits: String = p.chars().filter(|c| c.is_ascii_digit()).collect();
-            digits.len() > 11 && !digits.starts_with("55")
-        }).unwrap_or(false);
+        let is_international = phone
+            .map(|p| {
+                let digits: String = p.chars().filter(|c| c.is_ascii_digit()).collect();
+                digits.len() > 11 && !digits.starts_with("55")
+            })
+            .unwrap_or(false);
 
         json!({
             "success": true,
@@ -2230,23 +2653,47 @@ impl McpServer {
     fn handle_twenty_intent(&self, args: &Value) -> Value {
         use crate::twenty::IntentSignalInput;
         let input = IntentSignalInput {
-            source: args.get("source").and_then(|v| v.as_str()).map(String::from),
-            last_contact_date: args.get("last_contact_date").and_then(|v| v.as_str()).map(String::from),
-            next_contact_date: args.get("next_contact_date").and_then(|v| v.as_str()).map(String::from),
+            source: args
+                .get("source")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            last_contact_date: args
+                .get("last_contact_date")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            next_contact_date: args
+                .get("next_contact_date")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         };
         // Inline intent signal calculation (same logic as TwentyService::calculate_intent_signal)
-        let is_paid = input.source.as_deref().map(|s| {
-            matches!(s, "google_ads" | "facebook_ads" | "instagram_ads" | "paid" | "ads")
-        }).unwrap_or(false);
-        let has_recent_contact = input.last_contact_date.as_deref().map(|d| {
-            chrono::NaiveDate::parse_from_str(&d[..10], "%Y-%m-%d")
-                .map(|date| (chrono::Utc::now().date_naive() - date).num_days() <= 14)
-                .unwrap_or(false)
-        }).unwrap_or(false);
+        let is_paid = input
+            .source
+            .as_deref()
+            .map(|s| {
+                matches!(
+                    s,
+                    "google_ads" | "facebook_ads" | "instagram_ads" | "paid" | "ads"
+                )
+            })
+            .unwrap_or(false);
+        let has_recent_contact = input
+            .last_contact_date
+            .as_deref()
+            .map(|d| {
+                chrono::NaiveDate::parse_from_str(&d[..10], "%Y-%m-%d")
+                    .map(|date| (chrono::Utc::now().date_naive() - date).num_days() <= 14)
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
         let has_followup = input.next_contact_date.is_some();
-        let signal = if is_paid && has_recent_contact && has_followup { "high" }
-            else if has_recent_contact || has_followup { "medium" }
-            else { "low" };
+        let signal = if is_paid && has_recent_contact && has_followup {
+            "high"
+        } else if has_recent_contact || has_followup {
+            "medium"
+        } else {
+            "low"
+        };
         json!({
             "success": true,
             "intentSignal": signal,
@@ -2256,15 +2703,38 @@ impl McpServer {
     }
 
     fn handle_twenty_next_action(&self, args: &Value) -> Value {
-        let status = args.get("lead_status").and_then(|v| v.as_str()).unwrap_or("novo");
+        let status = args
+            .get("lead_status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("novo");
         let tier = args.get("tier").and_then(|v| v.as_str()).unwrap_or("C");
         let is_premium = matches!(tier.to_uppercase().as_str(), "S" | "A");
         let (action, priority, reason) = match status {
-            "novo" => ("Fazer primeiro contato", if is_premium { "high" } else { "medium" }, "Lead novo aguardando primeiro contato"),
-            "contato_inicial" => ("Qualificar interesse", "medium", "Lead contatado, precisa qualificar"),
-            "qualificado" => ("Agendar visita", "medium", "Lead qualificado, agendar visita"),
-            "visita_agendada" => ("Confirmar visita", "high", "Visita agendada, confirmar presença"),
-            "visita_realizada" => ("Enviar proposta", "high", "Visita realizada, enviar proposta"),
+            "novo" => (
+                "Fazer primeiro contato",
+                if is_premium { "high" } else { "medium" },
+                "Lead novo aguardando primeiro contato",
+            ),
+            "contato_inicial" => (
+                "Qualificar interesse",
+                "medium",
+                "Lead contatado, precisa qualificar",
+            ),
+            "qualificado" => (
+                "Agendar visita",
+                "medium",
+                "Lead qualificado, agendar visita",
+            ),
+            "visita_agendada" => (
+                "Confirmar visita",
+                "high",
+                "Visita agendada, confirmar presença",
+            ),
+            "visita_realizada" => (
+                "Enviar proposta",
+                "high",
+                "Visita realizada, enviar proposta",
+            ),
             "proposta_enviada" => ("Follow-up proposta", "high", "Proposta enviada, acompanhar"),
             "negociacao" => ("Negociar termos", "high", "Em negociação ativa"),
             _ => ("Verificar status", "low", "Status requer revisão"),
@@ -2293,14 +2763,17 @@ impl ServerHandler for McpServer {
                 name: "rust-c2s-api-mcp".into(),
                 version: env!("CARGO_PKG_VERSION").into(),
                 title: Some("C2S Lead Enrichment MCP Server".into()),
-                description: Some("66 tools for lead discovery, enrichment, scoring, and CRM integration".into()),
+                description: Some(
+                    "66 tools for lead discovery, enrichment, scoring, and CRM integration".into(),
+                ),
                 icons: None,
                 website_url: None,
             },
             instructions: Some(
                 "C2S Lead Enrichment API — 66 tools for lead discovery, enrichment, \
                  scoring, risk assessment, CRM integration, and reporting. \
-                 Tools that require database/HTTP are stubbed in stdio mode.".into()
+                 Tools that require database/HTTP are stubbed in stdio mode."
+                    .into(),
             ),
         }
     }
@@ -2312,8 +2785,10 @@ impl ServerHandler for McpServer {
     ) -> Result<ListResourcesResult, McpError> {
         Ok(ListResourcesResult {
             resources: vec![
-                RawResource::new("enrichment://stats", "Enrichment Statistics".to_string()).no_annotation(),
-                RawResource::new("enrichment://health", "Service Health".to_string()).no_annotation(),
+                RawResource::new("enrichment://stats", "Enrichment Statistics".to_string())
+                    .no_annotation(),
+                RawResource::new("enrichment://health", "Service Health".to_string())
+                    .no_annotation(),
                 RawResource::new("enrichment://recent", "Recent Leads".to_string()).no_annotation(),
             ],
             next_cursor: None,
@@ -2386,7 +2861,8 @@ impl ServerHandler for McpServer {
         _ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let name: &str = &request.name;
-        let args = request.arguments
+        let args = request
+            .arguments
             .map(|obj| Value::Object(obj))
             .unwrap_or(Value::Object(serde_json::Map::new()));
 
@@ -2398,7 +2874,6 @@ impl ServerHandler for McpServer {
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────
-
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -2472,8 +2947,16 @@ mod tests {
     fn test_all_tools_have_descriptions() {
         let tools = McpServer::tool_definitions();
         for tool in &tools {
-            assert!(tool.description.is_some(), "Tool '{}' missing description", tool.name);
-            assert!(!tool.description.as_ref().unwrap().is_empty(), "Tool '{}' has empty description", tool.name);
+            assert!(
+                tool.description.is_some(),
+                "Tool '{}' missing description",
+                tool.name
+            );
+            assert!(
+                !tool.description.as_ref().unwrap().is_empty(),
+                "Tool '{}' has empty description",
+                tool.name
+            );
         }
     }
 
@@ -2546,7 +3029,8 @@ mod tests {
     #[test]
     fn test_twenty_next_action() {
         let server = McpServer::new(test_config());
-        let result = server.handle_twenty_next_action(&json!({ "lead_status": "novo", "tier": "S" }));
+        let result =
+            server.handle_twenty_next_action(&json!({ "lead_status": "novo", "tier": "S" }));
         assert_eq!(result["success"], true);
         assert!(result["primaryAction"].is_object());
     }
@@ -2596,8 +3080,13 @@ mod tests {
     #[tokio::test]
     async fn test_dispatch_stub_tool() {
         let server = McpServer::new(test_config());
-        let result = server.dispatch_tool("enrich_lead", json!({ "phone": "11999887766" })).await;
+        let result = server
+            .dispatch_tool("enrich_lead", json!({ "phone": "11999887766" }))
+            .await;
         assert_eq!(result["success"], false);
-        assert!(result["error"].as_str().unwrap().contains("requires database"));
+        assert!(result["error"]
+            .as_str()
+            .unwrap()
+            .contains("requires database"));
     }
 }
