@@ -411,6 +411,12 @@ PORT=8080
 - **POST** `/api/v1/c2s/enrich/:lead_id` - Complete C2S enrichment flow
 - **GET** `/api/v1/leads/process?id=<lead_id>` - Trigger enrichment (Make.com integration)
 
+### Report Generation
+- **POST** `/reports/html` - Generate HTML report from `{ persons, options }`
+- **POST** `/reports/markdown` - Generate Markdown report from `{ persons, options }`
+- **POST** `/reports/pdf` - Generate PDF report (Chrome headless) from `{ persons, options }`
+- **POST** `/reports/from-cpfs` - Look up persons by CPF from DB, generate report. Body: `{ cpfs: ["..."], format: "html"|"md"|"pdf", title?, subtitle? }`
+
 ---
 
 ## Important Conventions & Gotchas

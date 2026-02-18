@@ -292,6 +292,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/ai/generate", post(ai_generate::ai_generate))
         // Unified context endpoint (parallel fan-out to Work API + Meilisearch + IBVI)
         .route("/api/v1/context", get(context::get_context))
+        // Report generation endpoints
+        .route("/reports/markdown", post(generate_markdown_report_handler))
+        .route("/reports/html", post(generate_html_report_handler))
+        .route("/reports/pdf", post(generate_pdf_report_handler))
+        .route(
+            "/reports/from-cpfs",
+            post(generate_report_from_cpfs_handler),
+        )
         .layer(axum_middleware::from_fn(api_auth::api_key_auth))
         .layer(
             ServiceBuilder::new()
@@ -867,6 +875,132 @@ async fn generate_pdf_report_handler(
 
     let svc = report::ProfileReportService::new();
     let result = svc.generate_pdf(&persons, &options).await;
+    Ok(axum::Json(serde_json::json!(result)))
+}
+
+/// POST /reports/from-cpfs — Look up persons by CPF from DB and generate report
+async fn generate_report_from_cpfs_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let cpfs: Vec<String> = body
+        .get("cpfs")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
+    if cpfs.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "cpfs array is required".to_string(),
+        ));
+    }
+
+    let format = body
+        .get("format")
+        .and_then(|v| v.as_str())
+        .unwrap_or("html");
+
+    let title = body
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Lead Report — MBRAS");
+
+    let subtitle = body
+        .get("subtitle")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    // Look up each CPF from the database
+    let mut persons = Vec::new();
+    for cpf in &cpfs {
+        let digits: String = cpf.chars().filter(|c| c.is_ascii_digit()).collect();
+
+        // Fetch party
+        let party = sqlx::query_as::<_, (uuid::Uuid, String, Option<String>, Option<chrono::NaiveDate>, Option<String>, Option<String>)>(
+            "SELECT id, full_name, cpf_cnpj, birth_date, sex, mother_name FROM core.parties WHERE cpf_cnpj = $1 AND party_type = 'person' LIMIT 1"
+        )
+        .bind(&digits)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {}", e)))?;
+
+        let Some((party_id, name, _cpf_val, birth_date, gender, _mother)) = party else {
+            continue;
+        };
+
+        // Fetch contacts
+        let contacts: Vec<(String, String)> = sqlx::query_as(
+            "SELECT contact_type::text, value FROM core.party_contacts WHERE party_id = $1",
+        )
+        .bind(party_id)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("DB error: {}", e),
+            )
+        })?;
+
+        let phones: Vec<String> = contacts
+            .iter()
+            .filter(|(t, _)| t == "phone" || t == "whatsapp")
+            .map(|(_, v)| v.clone())
+            .collect();
+
+        let emails: Vec<String> = contacts
+            .iter()
+            .filter(|(t, _)| t == "email")
+            .map(|(_, v)| v.clone())
+            .collect();
+
+        // Fetch income from latest enrichment
+        let income: Option<f64> = sqlx::query_scalar(
+            "SELECT (raw_payload->'DadosEconomicos'->>'renda')::float8 * 1.9 FROM core.party_enrichments WHERE party_id = $1 ORDER BY enriched_at DESC LIMIT 1"
+        )
+        .bind(party_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten();
+
+        persons.push(report::ReportPerson {
+            cpf: digits,
+            name,
+            occupation: None,
+            company: None,
+            birth_date: birth_date.map(|d| d.format("%d/%m/%Y").to_string()),
+            gender,
+            income,
+            phones,
+            emails,
+            address: None,
+        });
+    }
+
+    if persons.is_empty() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            "No persons found for the given CPFs".to_string(),
+        ));
+    }
+
+    let options = report::ReportOptions {
+        title: title.to_string(),
+        subtitle,
+        classification: "Confidencial - Uso Interno".to_string(),
+        include_contacts: true,
+        include_income: true,
+        output_dir: None,
+    };
+
+    let svc = report::ProfileReportService::new();
+    let result = match format {
+        "pdf" => svc.generate_pdf(&persons, &options).await,
+        "md" | "markdown" => svc.generate_markdown(&persons, &options),
+        _ => svc.generate_html(&persons, &options),
+    };
+
     Ok(axum::Json(serde_json::json!(result)))
 }
 
