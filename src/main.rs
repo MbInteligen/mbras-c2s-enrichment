@@ -47,7 +47,7 @@ use axum::{
     http::StatusCode,
     middleware as axum_middleware,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{get, post, put},
     Router,
 };
 use moka::future::Cache;
@@ -300,6 +300,48 @@ async fn main() -> anyhow::Result<()> {
             "/reports/from-cpfs",
             post(generate_report_from_cpfs_handler),
         )
+        // ─── C2S Extended CRM routes (Phase 7) ─────────────────────────
+        // Sellers
+        .route("/sellers", get(list_sellers_handler).post(create_seller_handler))
+        .route("/sellers/:id", get(get_seller_handler).put(update_seller_handler))
+        // Tags
+        .route("/tags", get(list_tags_handler).post(create_tag_handler))
+        .route("/leads/:lead_id/tags", get(get_lead_tags_handler))
+        .route("/leads/:lead_id/tag", post(add_tag_to_lead_handler))
+        // Activities (per-type routes for frontend compatibility)
+        .route("/leads/:lead_id/call", post(activity_call_handler))
+        .route("/leads/:lead_id/meeting", post(activity_meeting_handler))
+        .route("/leads/:lead_id/task", post(activity_task_handler))
+        .route("/leads/:lead_id/email", post(activity_email_handler))
+        .route("/leads/:lead_id/interact", post(activity_interact_handler))
+        .route("/leads/:lead_id/activity", post(register_activity_handler))
+        // Notes & Forward
+        .route("/leads/:lead_id/note", post(add_note_handler))
+        .route("/leads/forward/:lead_id", post(forward_lead_handler))
+        // Create lead in C2S
+        .route("/api/v1/leads/create", post(create_lead_handler))
+        // Search by phone/email
+        .route("/leads/search/phone/:phone", get(search_by_phone_handler))
+        .route("/leads/search/email/:email", get(search_by_email_handler))
+        // Enrichment status
+        .route("/leads/:lead_id/enrichment-status", get(enrichment_status_handler))
+        // Distribution
+        .route("/leads/distribute", post(distribute_leads_handler))
+        .route("/leads/auto-assign", post(auto_assign_handler))
+        // ─── Twenty CRM routes (Phase 8) ───────────────────────────────
+        .route("/twenty/leads", post(twenty_create_lead_handler))
+        .route("/twenty/leads/import", post(twenty_bulk_import_handler))
+        .route("/twenty/leads/:id", get(twenty_get_lead_handler))
+        .route("/twenty/leads/:id/delegate", post(twenty_delegate_handler))
+        .route("/twenty/leads/:id/sla", get(twenty_sla_handler))
+        .route("/twenty/leads/:id/next-action", get(twenty_next_action_handler))
+        .route("/twenty/leads/:id/intent", post(twenty_intent_signal_handler))
+        .route("/twenty/stats/pipeline", get(twenty_pipeline_stats_handler))
+        .route("/twenty/stats/broker", get(twenty_broker_stats_handler))
+        .route("/twenty/sla/violations", get(twenty_sla_violations_handler))
+        // ─── Photo routes (Phase 10) ───────────────────────────────────
+        .route("/photos/upload", post(upload_photo_handler))
+        .route("/photos/:key", get(photo_url_handler))
         .layer(axum_middleware::from_fn(api_auth::api_key_auth))
         .layer(
             ServiceBuilder::new()
@@ -506,6 +548,56 @@ async fn update_seller_handler(
     }
 }
 
+// ─── Create Lead in C2S ─────────────────────────────────────────────────────
+
+#[derive(Debug, serde::Deserialize)]
+struct CreateLeadRequest {
+    name: String,
+    phone: Option<String>,
+    email: Option<String>,
+    cpf: Option<String>,
+    description: Option<String>,
+    source: Option<String>,
+    seller_id: Option<String>,
+}
+
+async fn create_lead_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    axum::Json(payload): axum::Json<CreateLeadRequest>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let gateway = state
+        .gateway_client
+        .as_ref()
+        .ok_or((StatusCode::SERVICE_UNAVAILABLE, "C2S client not configured".into()))?;
+
+    // Build description with CPF if provided
+    let desc = match (&payload.description, &payload.cpf) {
+        (Some(d), Some(cpf)) => format!("{} | CPF: {}", d, cpf),
+        (Some(d), None) => d.clone(),
+        (None, Some(cpf)) => format!("CPF: {}", cpf),
+        (None, None) => "Created via CRM AI Chat".into(),
+    };
+
+    match gateway
+        .create_lead(
+            &payload.name,
+            payload.phone.as_deref(),
+            payload.email.as_deref(),
+            &desc,
+            payload.source.as_deref(),
+            payload.seller_id.as_deref(),
+        )
+        .await
+    {
+        Ok(lead_id) => Ok(axum::Json(serde_json::json!({
+            "success": true,
+            "lead_id": lead_id,
+            "message": format!("Lead '{}' created in C2S", payload.name)
+        }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
 async fn list_tags_handler(
     State(state): State<Arc<handlers::AppState>>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
@@ -567,6 +659,91 @@ async fn register_activity_handler(
         c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
     match svc.register_activity(&lead_id, &input).await {
         Ok(result) => Ok(axum::Json(result)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+// ─── Per-activity-type thin wrappers (for frontend route compatibility) ──────
+
+async fn activity_call_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let input = c2s_extended::ActivityInput {
+        activity_type: c2s_extended::ActivityType::Call,
+        description: String::new(),
+        duration_minutes: None,
+        scheduled_at: None,
+    };
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.register_activity(&lead_id, &input).await {
+        Ok(result) => Ok(axum::Json(result)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn activity_meeting_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let input = c2s_extended::ActivityInput {
+        activity_type: c2s_extended::ActivityType::Meeting,
+        description: String::new(),
+        duration_minutes: None,
+        scheduled_at: None,
+    };
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.register_activity(&lead_id, &input).await {
+        Ok(result) => Ok(axum::Json(result)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn activity_task_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+    body: Option<axum::Json<serde_json::Value>>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let desc = body.and_then(|b| b.get("description").and_then(|v| v.as_str()).map(String::from)).unwrap_or_default();
+    let input = c2s_extended::ActivityInput {
+        activity_type: c2s_extended::ActivityType::Task,
+        description: desc,
+        duration_minutes: None,
+        scheduled_at: None,
+    };
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.register_activity(&lead_id, &input).await {
+        Ok(result) => Ok(axum::Json(result)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn activity_email_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+    body: Option<axum::Json<serde_json::Value>>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let desc = body.and_then(|b| b.get("body").and_then(|v| v.as_str()).map(String::from)).unwrap_or_default();
+    let input = c2s_extended::ActivityInput {
+        activity_type: c2s_extended::ActivityType::Email,
+        description: desc,
+        duration_minutes: None,
+        scheduled_at: None,
+    };
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.register_activity(&lead_id, &input).await {
+        Ok(result) => Ok(axum::Json(result)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+async fn activity_interact_handler(
+    State(state): State<Arc<handlers::AppState>>,
+    Path(lead_id): Path<String>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    let svc = c2s_extended::C2sExtendedService::new(&state.config.c2s_base_url, &state.config.c2s_token);
+    match svc.mark_as_interacted(&lead_id).await {
+        Ok(()) => Ok(axum::Json(serde_json::json!({ "success": true }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
 }

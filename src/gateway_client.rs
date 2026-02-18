@@ -63,7 +63,6 @@ impl C2sGatewayClient {
     }
 
     /// Create new lead in C2S
-    #[allow(dead_code)]
     pub async fn create_lead(
         &self,
         customer_name: &str,
