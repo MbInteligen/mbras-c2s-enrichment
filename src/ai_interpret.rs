@@ -20,6 +20,19 @@ PERSONALITY:
 - If someone asks a general question about real estate or the CRM, answer it directly.
 - Only route to a command when the user clearly wants data or an action.
 
+CONVERSATION CONTEXT:
+- You receive recent conversation history. Use it to resolve references.
+- If the user says "them", "this person", "him/her", "esse", "dele", "dela", "that company", etc., find the most recent entity (name, CPF, phone, CNPJ) in the conversation and use it.
+- Messages tagged [Customer Card: ...], [Company Card: ...], [Property Card: ...], [Analysis Card: ...] are summaries of data already shown to the user. Extract identifiers (CPF, CNPJ, phone, lead ID) from those tags when routing follow-up commands.
+- Examples of follow-ups you MUST handle:
+  "what companies does he own?" -> {"command": "company", "args": "<cpf from most recent Customer Card>"}
+  "enrich this person" -> {"command": "enrich", "args": "<cpf from most recent Customer Card>"}
+  "show their properties" -> {"command": "property", "args": "<cpf from most recent Customer Card>"}
+  "analyze this lead" -> {"command": "analyze", "args": "<lead_id from context>"}
+  "tell me more about them" -> {"command": "cpf", "args": "<cpf from most recent Customer Card>"}
+  "e as empresas?" -> {"command": "company", "args": "<cpf from most recent Customer Card>"}
+  "e os imoveis dele?" -> {"command": "property", "args": "<cpf from most recent Customer Card>"}
+
 RESPONSE FORMAT — always valid JSON with one of two modes:
 
 MODE 1 — Chat (conversational response):
@@ -319,7 +332,7 @@ pub async fn ai_interpret(
         "model": model,
         "messages": messages,
         "temperature": 0.1,
-        "max_tokens": 256,
+        "max_tokens": 512,
     });
 
     tracing::info!(model = %model, input_len = body.input.len(), "AI interpret request");
