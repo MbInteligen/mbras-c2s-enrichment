@@ -417,6 +417,57 @@ PORT=8080
 - **POST** `/reports/pdf` - Generate PDF report (Chrome headless) from `{ persons, options }`
 - **POST** `/reports/from-cpfs` - Look up persons by CPF from DB, generate report. Body: `{ cpfs: ["..."], format: "html"|"md"|"pdf", title?, subtitle? }`
 
+### C2S Extended CRM (Phase 7) — Added Feb 2026
+Sellers:
+- **GET** `/sellers` - List all active brokers
+- **GET** `/sellers/:id` - Get seller by ID
+- **POST** `/sellers` - Create seller
+- **PUT** `/sellers/:id` - Update seller
+
+Tags:
+- **GET** `/tags` - List all tags
+- **POST** `/tags` - Create tag. Body: `{ name }`
+- **GET** `/leads/:lead_id/tags` - Get tags for a lead
+- **POST** `/leads/:lead_id/tag` - Add tag to lead. Body: `{ tag_id }`
+
+Activities (per-type routes for frontend compatibility):
+- **POST** `/leads/:lead_id/call` - Register phone call
+- **POST** `/leads/:lead_id/meeting` - Register meeting
+- **POST** `/leads/:lead_id/task` - Create task. Body: `{ description }`
+- **POST** `/leads/:lead_id/email` - Register email. Body: `{ body }`
+- **POST** `/leads/:lead_id/interact` - Mark lead as contacted
+- **POST** `/leads/:lead_id/activity` - Generic activity. Body: `{ type, description }`
+
+Notes & Forward:
+- **POST** `/leads/:lead_id/note` - Add note. Body: `{ body }`
+- **POST** `/leads/forward/:lead_id` - Forward lead. Body: `{ seller_id }`
+
+Search:
+- **GET** `/leads/search/phone/:phone` - Find lead by phone
+- **GET** `/leads/search/email/:email` - Find lead by email
+
+Lead Management:
+- **POST** `/api/v1/leads/create` - Create lead in C2S. Body: `{ name, phone?, email?, cpf?, description?, source?, seller_id? }`
+- **GET** `/leads/:lead_id/enrichment-status` - Enrichment status for a lead
+- **POST** `/leads/distribute` - Round-robin lead distribution
+- **POST** `/leads/auto-assign` - Tier-based auto-assignment
+
+### Twenty CRM (Phase 8) — Added Feb 2026
+- **POST** `/twenty/leads` - Create lead (auto-routes by tier). Body: `{ name, phone?, email?, source?, tier?, score?, cpf?, metadata? }`
+- **GET** `/twenty/leads/:id` - Get lead (searches all workspaces)
+- **POST** `/twenty/leads/:id/delegate` - Delegate lead. Body: `{ tier, reason, delegated_by? }`
+- **GET** `/twenty/leads/:id/sla?tier=X&created_at=Y` - Check SLA status
+- **GET** `/twenty/leads/:id/next-action?status=X&tier=Y` - Recommended next action
+- **POST** `/twenty/leads/:id/intent` - Calculate intent signal. Body: `{ activities }`
+- **GET** `/twenty/stats/pipeline?workspace=general|senior|ops` - Pipeline stats
+- **GET** `/twenty/stats/broker?workspace=general|senior|ops` - Broker performance
+- **GET** `/twenty/sla/violations?workspace=general|senior|ops` - SLA violations
+- **POST** `/twenty/leads/import` - Bulk import with dedup. Body: `{ leads[], source? }`
+
+### Photo Storage (Phase 10) — Added Feb 2026
+- **POST** `/photos/upload` - Upload photo. Body: `{ cpf, photo }` (base64 JPEG)
+- **GET** `/photos/:key` - Get photo URL
+
 ---
 
 ## Important Conventions & Gotchas
@@ -503,11 +554,13 @@ pub struct AppState {
 
 **Important**: Project uses Rust Edition 2024 (unstable)
 
-**Dockerfile must use nightly**:
+**Dockerfile must use nightly + bookworm**:
 ```dockerfile
-FROM rust:latest as builder
+FROM rust:bookworm as builder
 RUN rustup toolchain install nightly && rustup default nightly
 ```
+
+**IMPORTANT:** Use `rust:bookworm` (not `rust:latest`) to match the runtime `debian:bookworm-slim`. As of Feb 2026, `rust:latest` ships with Debian Trixie (glibc 2.39) while `bookworm-slim` has glibc 2.36, causing `GLIBC_2.39 not found` crashes at runtime.
 
 ---
 
