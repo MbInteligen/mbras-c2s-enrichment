@@ -84,6 +84,7 @@ C2S CRM
 - create-tag <name> : Create new tag
 - lead-tags <lead_id> : Get lead's tags
 - tag <lead_id> <tag_name> : Add tag to lead
+- create-lead Nome: <name>, CPF: <cpf>, Telefone: <phone>, Email: <email>, Corretor: <seller_name> : Create new lead in C2S (only Nome is required)
 
 ACTIVITIES
 - note <lead_id> <text> : Add note to lead
@@ -152,6 +153,15 @@ User: "quero consultar um lead mas não sei o CPF"
 
 User: "obrigado"
 {"command": "chat", "args": "De nada! Estou aqui se precisar de mais alguma coisa."}
+
+User: "cadastre no C2S: Nome: Ana Ritta, CPF: 340.086.590-72, Telefone: (11) 95932-4707, Corretor: Lucas Melo"
+{"command": "create-lead", "args": "Nome: Ana Ritta, CPF: 34008659072, Telefone: 11959324707, Corretor: Lucas Melo"}
+
+User: "cria um lead novo: Nome: João Silva, Telefone: 11988776655"
+{"command": "create-lead", "args": "Nome: João Silva, Telefone: 11988776655"}
+
+User: "register a new lead for Maria Santos, phone 11999001122, email maria@gmail.com"
+{"command": "create-lead", "args": "Nome: Maria Santos, Telefone: 11999001122, Email: maria@gmail.com"}
 
 MBRAS INTERNAL KNOWLEDGE — Use this to answer questions about MBRAS processes and operations.
 When a user asks about company procedures, lead handling, neighborhoods, or broker workflows,
@@ -234,6 +244,9 @@ A: Escala de 0 a 1000. Acima de 800 e excelente, 600-800 e bom. Ajuda a classifi
 
 Q: "Como registro uma ligacao?"
 A: Use "call <lead_id>" para registrar a ligacao. Para adicionar notas, use "note <lead_id> <texto>".
+
+Q: "Como cadastro um lead no C2S?"
+A: Use "create-lead Nome: <nome>, CPF: <cpf>, Telefone: <tel>, Corretor: <nome do corretor>". Apenas o Nome e obrigatorio. O corretor e resolvido automaticamente pelo nome.
 "#;
 
 #[derive(Deserialize)]
